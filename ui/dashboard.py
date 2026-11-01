@@ -785,13 +785,16 @@ class DashboardWindow(ctk.CTk):
                 exe_path = base_dir / "dist" / "Project Voice" / "Project Voice.exe"
             icon_path = base_dir / "assets" / "icon.ico"
 
+            def _ps_esc(p):
+                return str(p).replace("'", "''")
+
             ps_cmd = f"""
             $ws = New-Object -ComObject WScript.Shell
-            $s = $ws.CreateShortcut('{str(sc_path)}')
-            $s.TargetPath = '{str(exe_path)}'
+            $s = $ws.CreateShortcut('{_ps_esc(sc_path)}')
+            $s.TargetPath = '{_ps_esc(exe_path)}'
             $s.Arguments = '--tray'
-            $s.WorkingDirectory = '{str(exe_path.parent)}'
-            $s.IconLocation = '{str(icon_path)},0'
+            $s.WorkingDirectory = '{_ps_esc(exe_path.parent)}'
+            $s.IconLocation = '{_ps_esc(icon_path)},0'
             $s.Description = 'Project Voice - Startup'
             $s.Save()
             """

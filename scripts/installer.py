@@ -21,7 +21,7 @@ if sys.stdout is not None and getattr(sys.stdout, "encoding", None) != 'utf-8':
     except Exception:
         pass
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 PYTHONW_PATH = Path(sys.executable).parent / "pythonw.exe"
 if not PYTHONW_PATH.exists():
     PYTHONW_PATH = Path(sys.executable)

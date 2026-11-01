@@ -1,19 +1,21 @@
 """
 Audio Recording Engine with Pre-roll Ring Buffer & Release Tail
 Implements professional dictation audio capture:
+- Pure in-memory RAM audio capture (standard library wave, zero scipy overhead)
 - Thread-safe persistent stream with pre-roll ring buffer
-- Release tail (~220ms AFTER key-up) so trailing syllables are never clipped
+- Release tail (~200ms AFTER key-up) so trailing syllables are never clipped
 - No digital zeros (prevents Whisper silence hallucinations)
 - Gentle peak normalization to -3 dBFS
 - Dynamic stream auto-recovery
+- True zero-disk storage (honors privacy guarantees)
 """
 
 import collections
 import io
 import threading
 import time
+import wave
 import numpy as np
-from scipy.io.wavfile import write
 import sounddevice as sd
 from config.settings import settings
 
@@ -22,14 +24,15 @@ class AudioRecorder:
         self.sample_rate = settings.sample_rate
         self.channels = settings.channels
         self.is_recording = False
-        
+        self.is_stopping = False
+
         # 350ms pre-roll ring buffer of real room audio
         self.pre_roll_samples = int(0.35 * self.sample_rate)
         self.ring_buffer = collections.deque(maxlen=self.pre_roll_samples)
-        
+
         # Concurrency lock protecting buffers
         self.buffer_lock = threading.Lock()
-        
+
         # Active recording buffer
         self.active_buffer = []
         self.stream = None
@@ -54,52 +57,49 @@ class AudioRecorder:
             print(f"Error opening persistent audio stream: {e}")
 
     def _audio_callback(self, indata, frames, time_info, status):
-        # Always feed ring buffer with ambient room tone
         flat_data = indata.flatten()
         with self.buffer_lock:
             self.ring_buffer.extend(flat_data)
             if self.is_recording:
-                self.active_buffer.append(indata.copy())
+                self.active_buffer.append(flat_data.copy())
 
     def start(self):
         """Called immediately on hotkey press."""
-        # Auto-recover stream if it died or disconnected
         if not self.stream or not self.stream.active:
             self._start_persistent_stream()
 
         with self.buffer_lock:
-            if self.is_recording:
-                return
+            self.is_stopping = False
             self.active_buffer = []
-            # Thread-safe snapshot of pre-roll
+            # Snapshot pre-roll ambient room tone
             pre_roll_data = np.array(list(self.ring_buffer), dtype=np.int16)
             if len(pre_roll_data) > 0:
-                self.active_buffer.append(pre_roll_data.reshape(-1, 1))
+                self.active_buffer.append(pre_roll_data)
             self.is_recording = True
 
     def stop(self) -> bytes:
         """Called on hotkey release in a background worker thread."""
-        if not self.is_recording:
-            return b""
+        with self.buffer_lock:
+            if not self.is_recording or self.is_stopping:
+                return b""
+            self.is_stopping = True
 
-        # Release tail: wait 220ms so final syllable decays naturally
-        time.sleep(0.22)
+        # Release tail: wait 200ms so final syllable decays naturally
+        time.sleep(0.20)
 
         with self.buffer_lock:
             self.is_recording = False
+            self.is_stopping = False
             if not self.active_buffer:
                 return b""
             chunks = list(self.active_buffer)
             self.active_buffer = []
 
         full_audio = np.concatenate(chunks, axis=0)
-        if full_audio.ndim > 1:
-            full_audio = full_audio.flatten()
-
         if len(full_audio) == 0:
             return b""
 
-        # Gate on minimum duration (ignore accidental taps < 350ms total)
+        # Gate on minimum duration (ignore accidental brief taps < 350ms total)
         duration = len(full_audio) / self.sample_rate
         if duration < 0.35:
             return b""
@@ -110,19 +110,15 @@ class AudioRecorder:
             scale = 22000.0 / max_val
             full_audio = np.clip(full_audio.astype(np.float32) * scale, -32768, 32767).astype(np.int16)
 
-        # Pack into pure in-memory WAV buffer
+        # Pack into pure in-memory WAV buffer (Standard library wave, zero disk I/O)
         wav_io = io.BytesIO()
-        write(wav_io, self.sample_rate, full_audio)
-        wav_io.seek(0)
+        with wave.open(wav_io, 'wb') as wf:
+            wf.setnchannels(1)  # Mono for speech STT
+            wf.setsampwidth(2)   # 16-bit PCM = 2 bytes per sample
+            wf.setframerate(self.sample_rate)
+            wf.writeframes(full_audio.tobytes())
 
-        # Save debug WAV in project root safely
-        try:
-            debug_path = settings.base_dir / "last_dictation.wav"
-            write(str(debug_path), self.sample_rate, full_audio)
-        except Exception:
-            pass
-
-        return wav_io.read()
+        return wav_io.getvalue()
 
     @property
     def active(self) -> bool:

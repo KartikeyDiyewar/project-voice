@@ -134,12 +134,21 @@ class LLMFormatter:
 
         start_time = time.time()
 
-        user_content = f"<context>{context}</context>\n<transcript>{raw_text}</transcript>" if context else f"<transcript>{raw_text}</transcript>"
+        def _escape(t: str) -> str:
+            return t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+        escaped_raw = _escape(raw_text)
+        escaped_ctx = _escape(context) if context else ""
+        user_content = f"<context>{escaped_ctx}</context>\n<transcript>{escaped_raw}</transcript>" if escaped_ctx else f"<transcript>{escaped_raw}</transcript>"
 
         system_content = SYSTEM_PROMPT
         custom_words = self._load_custom_words()
         if custom_words:
             system_content += f"\n\nCUSTOM VOCABULARY (prefer these spellings when sound matches):\n" + ", ".join(custom_words)
+
+        # Scale token budget dynamically with input speech length
+        words = len(raw_text.split())
+        dynamic_max = max(300, min(1200, int(words * 2.5)))
 
         try:
             response = self.client.chat.completions.create(
@@ -149,12 +158,12 @@ class LLMFormatter:
                     {"role": "user", "content": user_content}
                 ],
                 temperature=self.temperature,
-                max_tokens=300
+                max_tokens=dynamic_max
             )
             cleaned_text = response.choices[0].message.content.strip()
 
-            # Strip any reasoning / thinking tags from thinking-enabled models
-            cleaned_text = re.sub(r"<think>.*?</think>", "", cleaned_text, flags=re.DOTALL).strip()
+            # Strip reasoning / thinking tags (including potential unclosed blocks)
+            cleaned_text = re.sub(r"<think>.*?(</think>|$)", "", cleaned_text, flags=re.DOTALL).strip()
 
             # Defensively strip surrounding quotes if added by LLM
             if cleaned_text.startswith('"') and cleaned_text.endswith('"') and len(cleaned_text) > 1:

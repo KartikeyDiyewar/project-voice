@@ -5,6 +5,7 @@ Preserves user clipboard hygiene by restoring previous clipboard content after p
 only if the clipboard has not been modified by the user.
 """
 
+import ctypes
 import threading
 import time
 from pynput import keyboard
@@ -14,13 +15,21 @@ class TextInjector:
     def __init__(self):
         self.keyboard_controller = keyboard.Controller()
 
-    def paste(self, text: str):
+    def paste(self, text: str, target_hwnd: int = 0):
         """
-        Pushes text to Windows clipboard, simulates Ctrl + V keystroke,
-        and cleanly restores previous clipboard contents safely.
+        Pushes text to Windows clipboard, ensures target window focus,
+        simulates Ctrl + V keystroke, and cleanly restores previous clipboard contents safely.
         """
         if not text:
             return
+
+        # Re-assert focus onto target application window if specified
+        if target_hwnd:
+            try:
+                ctypes.windll.user32.SetForegroundWindow(target_hwnd)
+                time.sleep(0.04)
+            except Exception:
+                pass
 
         try:
             old_clipboard = pyperclip.paste()

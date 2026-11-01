@@ -25,7 +25,7 @@ python -m PyInstaller ^
     --noconfirm ^
     app.py
 
-copy /Y .env "dist\Project Voice\.env" >nul 2>nul
+copy /Y .env.example "dist\Project Voice\.env.example" >nul 2>nul
 copy /Y settings.json "dist\Project Voice\settings.json" >nul 2>nul
 copy /Y dictionary.json "dist\Project Voice\dictionary.json" >nul 2>nul
 

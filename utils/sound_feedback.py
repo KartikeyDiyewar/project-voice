@@ -9,7 +9,11 @@ from config.settings import settings
 
 class SoundFeedback:
     def __init__(self):
-        self.enabled = settings.sound_feedback
+        pass
+
+    @property
+    def enabled(self) -> bool:
+        return settings.sound_feedback
 
     def _beep_async(self, freqs_and_durations):
         if not self.enabled:

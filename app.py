@@ -133,6 +133,7 @@ class ProjectVoiceApp:
 
     def on_hotkey_down(self):
         """Called when user presses and holds Ctrl+Space (or F8)."""
+        self.target_hwnd = ctypes.windll.user32.GetForegroundWindow()
         self.active_context = get_active_window_title()
         sound.play_start()
         self.recorder.start()
@@ -186,7 +187,7 @@ class ProjectVoiceApp:
         print(f"✨ AI Cleaned   : \"{clean_text}\" ({llm_ms:.0f} ms)")
 
         # 3. OS Auto-Paste Injection
-        self.injector.paste(clean_text)
+        self.injector.paste(clean_text, target_hwnd=getattr(self, "target_hwnd", 0))
         sound.play_success()
         self.indicator.show_pasted()
 

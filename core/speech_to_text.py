@@ -32,6 +32,21 @@ class GroqSTTProvider:
         else:
             self.client = None
 
+    def _get_primed_prompt(self) -> str:
+        """Constructs an acoustically primed prompt with common Hinglish particles and custom vocabulary."""
+        base_prompt = "Okay toh, mujhe pata hai kal meeting hai, bohot zyada kaam baki hai. Main report bhej dunga, phir saath mein review karenge."
+        dict_file = settings.base_dir / "dictionary.json"
+        if dict_file.exists():
+            try:
+                import json
+                with open(dict_file, "r", encoding="utf-8") as f:
+                    words = json.load(f).get("custom_words", [])
+                    if words:
+                        base_prompt += " " + ", ".join(words[:25]) + "."
+            except Exception:
+                pass
+        return base_prompt
+
     def transcribe(self, audio_bytes: bytes) -> tuple[str, float]:
         """
         Sends audio bytes to Groq Whisper and returns (raw_text, latency_ms).
@@ -51,7 +66,7 @@ class GroqSTTProvider:
             file=("speech.wav", audio_bytes),
             model=self.model,
             language="en",
-            prompt=self.prompt,
+            prompt=self._get_primed_prompt(),
             temperature=0.0,
             response_format="verbose_json"
         )
