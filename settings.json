@@ -1,0 +1,16 @@
+{
+  "hotkey": "ctrl+space",
+  "fallback_hotkey": "f8",
+  "audio": {
+    "sample_rate": 16000,
+    "channels": 1
+  },
+  "ai": {
+    "stt_provider": "groq",
+    "stt_model": "whisper-large-v3",
+    "llm_provider": "groq",
+    "llm_model": "qwen/qwen3.8-27b",
+    "temperature": 0.0
+  },
+  "sound_feedback": true
+}

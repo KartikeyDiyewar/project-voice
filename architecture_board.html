@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Project Voice: Wispr Flow Architecture & Roadmap</title>
+  <style>
+    :root {
+      --bg-color: #f8fafc;
+      --grid-dot: #cbd5e1;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --primary: #3b82f6;
+      --accent: #8b5cf6;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      background-image: radial-gradient(var(--grid-dot) 1.5px, transparent 1.5px);
+      background-size: 24px 24px;
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* Top Navigation Bar */
+    header {
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      padding: 14px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 18px;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+
+    .brand h1 {
+      font-size: 19px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .brand span {
+      font-size: 12px;
+      background: #e0e7ff;
+      color: #3730a3;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    .btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+      text-decoration: none;
+    }
+
+    .btn-outline {
+      background: white;
+      border-color: #cbd5e1;
+      color: #334155;
+    }
+
+    .btn-outline:hover {
+      background: #f1f5f9;
+      border-color: #94a3b8;
+    }
+
+    .btn-primary {
+      background: #2563eb;
+      color: white;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+    }
+
+    .btn-primary:hover {
+      background: #1d4ed8;
+    }
+
+    /* Main Container */
+    main {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 32px 24px 80px;
+      flex: 1;
+      width: 100%;
+    }
+
+    /* Banner / Hero */
+    .hero-banner {
+      background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);
+      color: white;
+      border-radius: 20px;
+      padding: 36px 40px;
+      margin-bottom: 40px;
+      box-shadow: 0 10px 25px -5px rgba(49, 46, 129, 0.3);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-banner h2 {
+      font-size: 28px;
+      font-weight: 800;
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+    }
+
+    .hero-banner p {
+      font-size: 15px;
+      line-height: 1.6;
+      color: #e0e7ff;
+      max-width: 850px;
+    }
+
+    .hero-tags {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+
+    .tag {
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(8px);
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    /* Section Headers */
+    .section-title {
+      font-size: 22px;
+      font-weight: 800;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .section-title .badge {
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-weight: 700;
+    }
+
+    /* Pipeline Diagram Grid */
+    .pipeline-container {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+      position: relative;
+      margin-bottom: 48px;
+    }
+
+    @media (max-width: 1100px) {
+      .pipeline-container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .step-card {
+      background: var(--card-bg);
+      border: 2px solid var(--border);
+      border-radius: 16px;
+      padding: 22px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+    }
+
+    .step-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
+      border-color: #94a3b8;
+    }
+
+    .step-number {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 14px;
+      color: white;
+      margin-bottom: 14px;
+    }
+
+    .c1 .step-number { background: #3b82f6; }
+    .c2 .step-number { background: #0ea5e9; }
+    .c3 .step-number { background: #f59e0b; }
+    .c4 .step-number { background: #8b5cf6; }
+    .c5 .step-number { background: #10b981; }
+
+    .step-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+
+    .step-subtitle {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .pointer-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      font-size: 13px;
+      line-height: 1.45;
+      color: #334155;
+      margin-bottom: 16px;
+      flex: 1;
+    }
+
+    .pointer-list li {
+      position: relative;
+      padding-left: 18px;
+    }
+
+    .pointer-list li::before {
+      content: "•";
+      position: absolute;
+      left: 0;
+      color: #64748b;
+      font-weight: bold;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .hinglish-box {
+      background: #f8fafc;
+      border-left: 3px solid #6366f1;
+      padding: 10px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #475569;
+      line-height: 1.4;
+      margin-top: auto;
+    }
+
+    .hinglish-box strong {
+      color: #1e1b4b;
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    /* Simulation Interactive Box */
+    .simulator-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px 28px;
+      margin-bottom: 48px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    }
+
+    .sim-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+
+    .sim-pipeline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 8px 0;
+    }
+
+    .sim-node {
+      padding: 10px 16px;
+      border-radius: 10px;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      font-size: 13px;
+      font-weight: 600;
+      color: #64748b;
+      transition: all 0.3s;
+      white-space: nowrap;
+    }
+
+    .sim-node.active {
+      background: #eff6ff;
+      border-color: #3b82f6;
+      color: #1d4ed8;
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.3);
+      transform: scale(1.05);
+    }
+
+    .sim-node.done {
+      background: #ecfdf5;
+      border-color: #10b981;
+      color: #065f46;
+    }
+
+    .sim-arrow {
+      color: #94a3b8;
+      font-weight: bold;
+    }
+
+    .sim-display {
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 20px;
+      border-radius: 12px;
+      font-family: ui-monospace, monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      min-height: 120px;
+      margin-top: 16px;
+      white-space: pre-wrap;
+    }
+
+    /* Comparison & Roadmap 2-Column */
+    .two-col-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 48px;
+    }
+
+    @media (max-width: 900px) {
+      .two-col-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .info-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 26px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
+    }
+
+    .info-card h3 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 12px;
+    }
+
+    .table th, .table td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .table th {
+      background: #f8fafc;
+      color: #475569;
+      font-weight: 700;
+    }
+
+    /* Roadmap Milestones */
+    .milestone-item {
+      display: flex;
+      gap: 16px;
+      padding: 14px 0;
+      border-bottom: 1px solid #f1f5f9;
+    }
+
+    .milestone-item:last-child {
+      border-bottom: none;
+    }
+
+    .milestone-badge {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #e0e7ff;
+      color: #4338ca;
+      font-weight: 800;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .milestone-content h4 {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: #1e293b;
+    }
+
+    .milestone-content p {
+      font-size: 12px;
+      color: #64748b;
+      line-height: 1.45;
+    }
+
+    .file-pill {
+      font-family: monospace;
+      font-size: 11px;
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid #e2e8f0;
+      margin-right: 4px;
+    }
+
+    /* Floating CTA */
+    .tldr-cta {
+      background: #fef3c7;
+      border: 2px dashed #f59e0b;
+      border-radius: 14px;
+      padding: 20px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 32px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .tldr-cta h4 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #92400e;
+      margin-bottom: 4px;
+    }
+
+    .tldr-cta p {
+      font-size: 13px;
+      color: #b45309;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header -->
+  <header>
+    <div class="brand">
+      <div class="brand-logo">V</div>
+      <div>
+        <h1>Project Voice: Wispr Flow Architecture</h1>
+      </div>
+      <span>BYOK Edition</span>
+    </div>
+    <div class="header-actions">
+      <a href="/tldraw.html" class="btn btn-outline" style="border-color:#3b82f6; color:#2563eb; font-weight:700;">
+        🎨 Open tldraw Whiteboard ↗
+      </a>
+      <button class="btn btn-primary" onclick="triggerSimulation()">
+        ▶ Run Live Simulator
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Hero Banner -->
+    <div class="hero-banner">
+      <h2>How Wispr Flow Works: Complete Visual Breakdown</h2>
+      <p>
+        Wispr Flow is not just speech-to-text. The magic comes from <strong>speed (<500ms total)</strong>, 
+        <strong>AI post-processing (removing filler words and formatting)</strong>, and 
+        <strong>instant system-wide typing injection into any focused window</strong>.
+      </p>
+      <div class="hero-tags">
+        <span class="tag">🎯 Bring Your Own Key (BYOK)</span>
+        <span class="tag">⚡ Sub-500ms End-to-End Latency</span>
+        <span class="tag">🔒 100% Privacy (Zero intermediate servers)</span>
+        <span class="tag">💻 Windows Native First -> Mobile Next</span>
+      </div>
+    </div>
+
+    <!-- The 5-Step Pipeline -->
+    <div class="section-title">
+      <span>The 5-Step Execution Pipeline</span>
+      <span class="badge" style="background:#e0e7ff; color:#3730a3;">The Core Engine</span>
+    </div>
+
+    <div class="pipeline-container">
+      
+      <!-- Step 1 -->
+      <div class="step-card c1">
+        <div class="step-number">1</div>
+        <div class="step-title">Global Hotkey</div>
+        <div class="step-subtitle">Windows Win32 Hook</div>
+        <ul class="pointer-list">
+          <li><strong>Runs silently</strong> in the background using <code>pynput</code> or Win32 API.</li>
+          <li><strong>No focus stealing</strong>: You stay in Slack, Chrome, or VSCode.</li>
+          <li><strong>Key Down</strong>: Instantly starts microphone recording stream.</li>
+          <li><strong>Key Up</strong>: Stops recording and fires transcription immediately.</li>
+        </ul>
+        <div class="hinglish-box">
+          <strong>💡 Asaan Bhasha Mein:</strong>
+          Aap CapsLock ya Alt+Space dabakar rakhenge, tabhi mic chalu hoga. Jaise hi chodenge, pipeline start ho jayegi!
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="step-card c2">
+        <div class="step-number">2</div>
+        <div class="step-title">Audio Buffer</div>
+        <div class="step-subtitle">In-Memory RAM Streaming</div>
+        <ul class="pointer-list">
+          <li>Captured using <code>sounddevice</code> at <strong>16kHz Mono</strong> (Whisper's sweet spot).</li>
+          <li><strong>In-Memory RAM</strong> (<code>io.BytesIO</code>): We do NOT write to slow SSD/hard drive files.</li>
+          <li>Packed into pure WAV bytes in under <strong>5 milliseconds</strong>.</li>
+        </ul>
+        <div class="hinglish-box">
+          <strong>💡 Asaan Bhasha Mein:</strong>
+          Audio ko hard drive par save karne ki zaroorat nahi hai. RAM me direct byte stream banta hai, isse speed rocket jaisi hoti hai.
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="step-card c3">
+        <div class="step-number">3</div>
+        <div class="step-title">Fast Speech-to-Text</div>
+        <div class="step-subtitle">Groq Whisper API</div>
+        <ul class="pointer-list">
+          <li>Sends WAV bytes to <code>whisper-large-v3-turbo</code>.</li>
+          <li><strong>Groq LPU Speed</strong>: Transcribes a 10-second voice note in ~<strong>180-250ms</strong>!</li>
+          <li>BYOK: Direct call to Groq using user's key.</li>
+          <li>Output: Raw text with pauses and filler words.</li>
+        </ul>
+        <div class="hinglish-box">
+          <strong>💡 Asaan Bhasha Mein:</strong>
+          Whisper model aapki aawaz ko text banata hai. Groq itna fast hai ki aawaz bolte hi 200 millisecond me text aa jata hai.
+        </div>
+      </div>
+
+      <!-- Step 4 -->
+      <div class="step-card c4">
+        <div class="step-number">4</div>
+        <div class="step-title">AI Formatting LLM</div>
+        <div class="step-subtitle">Wispr Flow's Secret Sauce</div>
+        <ul class="pointer-list">
+          <li>Raw speech has "umm", "like", stuttering, and zero punctuation.</li>
+          <li>Passed through <strong>Llama 3.3 70B</strong> or <strong>GPT-4o-mini</strong>.</li>
+          <li>Prompt cleans up fillers, corrects grammar, and formats into crisp sentences.</li>
+          <li>Adapts tone: Email vs Code vs Chat!</li>
+        </ul>
+        <div class="hinglish-box">
+          <strong>💡 Asaan Bhasha Mein:</strong>
+          Yahi Wispr Flow ka sabse bada secret hai! Ye aapke "umm, ahh, matlab, you know" hata deta hai aur text ko ekdum professional bana deta hai.
+        </div>
+      </div>
+
+      <!-- Step 5 -->
+      <div class="step-card c5">
+        <div class="step-number">5</div>
+        <div class="step-title">OS Auto-Paste</div>
+        <div class="step-subtitle">Clipboard & Virtual Keystroke</div>
+        <ul class="pointer-list">
+          <li>Formatted text is pushed to Windows clipboard.</li>
+          <li>App fires virtual <code>Ctrl + V</code> key event.</li>
+          <li>Because focus was never lost, text pastes right into your cursor position!</li>
+          <li>Total round-trip time: ~<strong>450 milliseconds</strong>.</li>
+        </ul>
+        <div class="hinglish-box">
+          <strong>💡 Asaan Bhasha Mein:</strong>
+          Clean text seedha clipboard me jaata hai aur system automatically Ctrl+V press karta hai. Aapko pata bhi nahi chalta aur likh jaata hai!
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Live Interactive Simulator -->
+    <div class="simulator-card">
+      <div class="sim-header">
+        <div>
+          <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 4px;">Interactive Pipeline Simulator</h3>
+          <p style="font-size: 13px; color: #64748b;">Click "Run Live Simulator" to see how data flows from your voice to the screen in real-time.</p>
+        </div>
+        <button class="btn btn-primary" id="sim-btn" onclick="triggerSimulation()">
+          ▶ Run Live Simulator
+        </button>
+      </div>
+
+      <div class="sim-pipeline">
+        <div class="sim-node" id="n1">1. Hotkey Down (0ms)</div>
+        <span class="sim-arrow">➔</span>
+        <div class="sim-node" id="n2">2. Audio Buffer (15ms)</div>
+        <span class="sim-arrow">➔</span>
+        <div class="sim-node" id="n3">3. Groq Whisper (210ms)</div>
+        <span class="sim-arrow">➔</span>
+        <div class="sim-node" id="n4">4. AI LLM Cleanup (180ms)</div>
+        <span class="sim-arrow">➔</span>
+        <div class="sim-node" id="n5">5. Auto-Paste (10ms)</div>
+      </div>
+
+      <div class="sim-display" id="sim-console">
+[STATUS] Ready. Click 'Run Live Simulator' above to see how Wispr Flow works step-by-step.
+      </div>
+    </div>
+
+    <!-- Two Column Breakdown -->
+    <div class="two-col-grid">
+      
+      <!-- BYOK & Architecture Notes -->
+      <div class="info-card">
+        <h3>🔑 Bring Your Own Key (BYOK) Explained</h3>
+        <p style="font-size: 13px; color: #475569; line-height: 1.6; margin-bottom: 14px;">
+          Traditional dictation apps charge $15–$30/month. With BYOK, the user brings their own API key (Groq or OpenAI):
+        </p>
+        
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Feature</th>
+              <th>Wispr Flow SaaS ($15/mo)</th>
+              <th>Our BYOK App ($0/mo)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Monthly Cost</strong></td>
+              <td>$15 - $20 / month</td>
+              <td><strong>$0</strong> (Groq has 14,400 free requests/day)</td>
+            </tr>
+            <tr>
+              <td><strong>Privacy</strong></td>
+              <td>Passes through company servers</td>
+              <td><strong>100% Local & Direct to API</strong></td>
+            </tr>
+            <tr>
+              <td><strong>Custom Prompts</strong></td>
+              <td>Locked presets</td>
+              <td><strong>You control the LLM prompt</strong></td>
+            </tr>
+            <tr>
+              <td><strong>Latency</strong></td>
+              <td>~500ms</td>
+              <td><strong>~400ms</strong> (Direct Groq LPU)</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style="margin-top: 18px; padding: 12px; background: #eff6ff; border-radius: 8px; font-size: 13px; color: #1e40af;">
+          <strong>📱 What about Mobile later?</strong><br>
+          Windows allows background global keyboard hooks + <code>Ctrl+V</code>. On mobile (iOS/Android), security sandboxes block this. So on mobile, Wispr Flow is implemented as an <strong>IME Keyboard Extension</strong> (like Gboard) with a custom microphone button!
+        </div>
+      </div>
+
+      <!-- Step by Step Learning Roadmap -->
+      <div class="info-card">
+        <h3>🚀 Our Step-by-Step Learning Roadmap</h3>
+        <p style="font-size: 13px; color: #475569; margin-bottom: 14px;">
+          You don't have to code everything at once. We build 5 tiny, readable scripts where you understand every line:
+        </p>
+
+        <div class="milestone-item">
+          <div class="milestone-badge">1</div>
+          <div class="milestone-content">
+            <h4><span class="file-pill">01_mic_test.py</span> Record & Save WAV</h4>
+            <p>Learn how Python talks to your microphone, captures raw PCM sound waves, and calculates decibel volume levels.</p>
+          </div>
+        </div>
+
+        <div class="milestone-item">
+          <div class="milestone-badge">2</div>
+          <div class="milestone-content">
+            <h4><span class="file-pill">02_whisper_stt.py</span> Cloud Transcription</h4>
+            <p>Connect your Groq/OpenAI key. Send the recorded audio in RAM directly to Whisper and print the raw text response.</p>
+          </div>
+        </div>
+
+        <div class="milestone-item">
+          <div class="milestone-badge">3</div>
+          <div class="milestone-content">
+            <h4><span class="file-pill">03_llm_cleaner.py</span> The Intelligence Prompt</h4>
+            <p>Pass the raw transcript through Llama 3.3. Test prompt engineering to eliminate "umms" and format bullet points.</p>
+          </div>
+        </div>
+
+        <div class="milestone-item">
+          <div class="milestone-badge">4</div>
+          <div class="milestone-content">
+            <h4><span class="file-pill">04_global_dictate.py</span> Hotkey & Auto-Paste</h4>
+            <p>Hook global keypresses (e.g. CapsLock). Open Notepad, hold CapsLock, talk, release, and watch it type automatically!</p>
+          </div>
+        </div>
+
+        <div class="milestone-item">
+          <div class="milestone-badge">5</div>
+          <div class="milestone-content">
+            <h4><span class="file-pill">05_floating_ui.py</span> Sleek Floating Pill</h4>
+            <p>Add a beautiful macOS/Windows style minimal floating overlay pill that reacts to your voice with a glowing wave.</p>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- tldraw CTA Banner -->
+    <div class="tldr-cta">
+      <div>
+        <h4>🎨 Want to edit this diagram directly in tldraw?</h4>
+        <p>We generated <code>whisper_flow_architecture.tldr</code> in this folder. Simply drag & drop it into tldraw.com!</p>
+      </div>
+      <a href="https://www.tldraw.com" target="_blank" class="btn btn-primary">
+        Open tldraw.com & Drop File
+      </a>
+    </div>
+
+  </main>
+
+  <script>
+    // Interactive Simulation Script
+    const consoleEl = document.getElementById("sim-console");
+    const nodes = [
+      document.getElementById("n1"),
+      document.getElementById("n2"),
+      document.getElementById("n3"),
+      document.getElementById("n4"),
+      document.getElementById("n5")
+    ];
+
+    function log(text) {
+      consoleEl.textContent += "\n" + text;
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+
+    async function sleep(ms) {
+      return new Promise(r => setTimeout(r, ms));
+    }
+
+    async function triggerSimulation() {
+      const btn = document.getElementById("sim-btn");
+      btn.disabled = true;
+      btn.textContent = "Simulating...";
+      
+      nodes.forEach(n => { n.className = "sim-node"; });
+      consoleEl.textContent = "=== STARTING WISPR FLOW PIPELINE SIMULATION ===";
+
+      // Step 1
+      nodes[0].className = "sim-node active";
+      log(">>> [00:00:00] User presses and holds [CapsLock] key in Chrome text box...");
+      await sleep(1000);
+      log("    Spoken words into mic: 'umm hey bro can we like meet tomorrow at five pm question mark'");
+
+      // Step 2
+      nodes[0].className = "sim-node done";
+      nodes[1].className = "sim-node active";
+      await sleep(400);
+      log(">>> [00:00:15] User releases key. Microphone stream packed into RAM (io.BytesIO: 64 KB WAV).");
+
+      // Step 3
+      nodes[1].className = "sim-node done";
+      nodes[2].className = "sim-node active";
+      await sleep(600);
+      log(">>> [00:00:225] Groq Whisper API responded in 210ms!");
+      log("    Raw Transcript: 'umm hey bro can we like meet tomorrow at five pm ?'");
+
+      // Step 4
+      nodes[2].className = "sim-node done";
+      nodes[3].className = "sim-node active";
+      await sleep(700);
+      log(">>> [00:00:405] LLM (Llama 3.3) prompt post-processed in 180ms.");
+      log("    Cleaned Output: 'Hey bro, can we meet tomorrow at 5:00 PM?'");
+
+      // Step 5
+      nodes[3].className = "sim-node done";
+      nodes[4].className = "sim-node active";
+      await sleep(300);
+      log(">>> [00:00:415] Text placed into Windows Clipboard. Emulated Ctrl + V fired into active window!");
+      log("✅ [SUCCESS] Total time taken: 415ms. The words typed themselves directly into your screen!");
+      
+      nodes[4].className = "sim-node done";
+      btn.disabled = false;
+      btn.textContent = "▶ Run Live Simulator Again";
+    }
+  </script>
+</body>
+</html>

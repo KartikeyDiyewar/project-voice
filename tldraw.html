@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Wispr Flow - Interactive tldraw Whiteboard</title>
+  
+  <!-- tldraw CSS -->
+  <link rel="stylesheet" href="https://esm.sh/tldraw@2/tldraw.css">
+
+  <style>
+    html, body, #root {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #fdfdfd;
+      font-family: sans-serif;
+    }
+
+    #loading-screen {
+      position: fixed;
+      inset: 0;
+      background: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      transition: opacity 0.4s ease;
+    }
+
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 4px solid #e2e8f0;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 16px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .loading-text {
+      font-size: 16px;
+      font-weight: 600;
+      color: #334155;
+    }
+
+    .loading-subtext {
+      font-size: 13px;
+      color: #64748b;
+      margin-top: 6px;
+    }
+
+    /* Top Floating Bar */
+    .top-pill {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(8px);
+      border: 1px solid #cbd5e1;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+      border-radius: 999px;
+      padding: 6px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+    }
+
+    .top-pill a {
+      color: #2563eb;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .top-pill a:hover {
+      text-decoration: underline;
+    }
+
+    .pill-btn {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom": "https://esm.sh/react-dom@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "tldraw": "https://esm.sh/tldraw@2"
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <div id="loading-screen">
+    <div class="spinner"></div>
+    <div class="loading-text">Loading tldraw Whiteboard...</div>
+    <div class="loading-subtext">Preparing Wispr Flow Architecture Diagram</div>
+  </div>
+
+  <div class="top-pill">
+    <span>🎨 <strong>tldraw Canvas</strong> (Zoom & Drag anywhere)</span>
+    <span>•</span>
+    <a href="/architecture_board.html">Switch to Visual Summary & Simulator ➔</a>
+  </div>
+
+  <div id="root"></div>
+
+  <script type="module">
+    import React from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { Tldraw } from 'tldraw';
+
+    function hideLoader() {
+      const loader = document.getElementById('loading-screen');
+      if (loader) {
+        loader.style.opacity = '0';
+        setTimeout(() => loader.remove(), 400);
+      }
+    }
+
+    function initDiagram(editor) {
+      // Create shapes
+      editor.createShapes([
+        // Title
+        {
+          type: 'geo',
+          x: 100,
+          y: 80,
+          props: {
+            w: 920,
+            h: 110,
+            geo: 'rectangle',
+            color: 'violet',
+            fill: 'semi',
+            size: 'm',
+            text: 'PROJECT VOICE: WISPR FLOW ARCHITECTURE & ROADMAP\n(BYOK Voice Dictation Engine for Windows & Mobile)'
+          }
+        },
+
+        // Step 1: Hotkey
+        {
+          type: 'geo',
+          x: 100,
+          y: 250,
+          props: {
+            w: 260,
+            h: 210,
+            geo: 'rectangle',
+            color: 'blue',
+            fill: 'semi',
+            size: 's',
+            text: '[ 1. GLOBAL HOTKEY ]\n\nTrigger: Press & Hold\n(e.g. CapsLock / Alt+Space)\n\n• Background hook (pynput)\n• Works inside ANY app\n• Key Down: Start audio\n• Key Up: Send to AI'
+          }
+        },
+
+        // Arrow 1 -> 2
+        {
+          type: 'arrow',
+          x: 360,
+          y: 350,
+          props: {
+            start: { x: 0, y: 0 },
+            end: { x: 70, y: 0 },
+            color: 'black',
+            text: 'Audio Stream'
+          }
+        },
+
+        // Step 2: Audio Buffer
+        {
+          type: 'geo',
+          x: 430,
+          y: 250,
+          props: {
+            w: 260,
+            h: 210,
+            geo: 'rectangle',
+            color: 'light-blue',
+            fill: 'semi',
+            size: 's',
+            text: '[ 2. AUDIO BUFFER ]\n\nMicrophone: 16kHz Mono\n\n• Direct in RAM (io.BytesIO)\n• Zero disk lag (no SSD write)\n• Packed to WAV in <5ms\n• Ready for instant API call'
+          }
+        },
+
+        // Arrow 2 -> 3
+        {
+          type: 'arrow',
+          x: 690,
+          y: 350,
+          props: {
+            start: { x: 0, y: 0 },
+            end: { x: 70, y: 0 },
+            color: 'black',
+            text: 'WAV Bytes'
+          }
+        },
+
+        // Step 3: Fast STT
+        {
+          type: 'geo',
+          x: 760,
+          y: 250,
+          props: {
+            w: 260,
+            h: 210,
+            geo: 'rectangle',
+            color: 'yellow',
+            fill: 'semi',
+            size: 's',
+            text: '[ 3. FAST STT (WHISPER) ]\n\nModel: whisper-large-v3-turbo\n\n• Groq Cloud API (~200ms!)\n• Or OpenAI Whisper\n• BYOK: Uses your own key\n• Output: Raw spoken transcript'
+          }
+        },
+
+        // Arrow 3 -> 4
+        {
+          type: 'arrow',
+          x: 890,
+          y: 460,
+          props: {
+            start: { x: 0, y: 0 },
+            end: { x: 0, y: 70 },
+            color: 'black',
+            text: 'Raw Text'
+          }
+        },
+
+        // Step 4: AI LLM Cleaner
+        {
+          type: 'geo',
+          x: 760,
+          y: 530,
+          props: {
+            w: 260,
+            h: 230,
+            geo: 'rectangle',
+            color: 'orange',
+            fill: 'semi',
+            size: 's',
+            text: '[ 4. AI FORMAT & CLEANUP ]\n\nWispr Flow Secret Sauce!\n\n• LLM: Llama 3.3 (Groq) or GPT-4o\n• Removes umms, ahhs, repeats\n• Proper punctuation & casing\n• Detects spoken formatting\n• Output: Polished text'
+          }
+        },
+
+        // Arrow 4 -> 5
+        {
+          type: 'arrow',
+          x: 760,
+          y: 645,
+          props: {
+            start: { x: 0, y: 0 },
+            end: { x: -70, y: 0 },
+            color: 'black',
+            text: 'Clean Text'
+          }
+        },
+
+        // Step 5: OS Auto-Paste
+        {
+          type: 'geo',
+          x: 430,
+          y: 530,
+          props: {
+            w: 260,
+            h: 230,
+            geo: 'rectangle',
+            color: 'green',
+            fill: 'semi',
+            size: 's',
+            text: '[ 5. AUTO-PASTE INJECTION ]\n\nWindows Level:\n\n• Text copied to Clipboard\n• Emulates virtual Ctrl + V\n• Injects into active window\n• Total round-trip: ~400ms!\n• Words magically appear!'
+          }
+        },
+
+        // Sticky Note: BYOK Advantage
+        {
+          type: 'note',
+          x: 100,
+          y: 530,
+          props: {
+            color: 'yellow',
+            size: 'm',
+            text: 'BYOK ADVANTAGE:\n\n1. 100% Privacy: Direct connection to Groq/OpenAI.\n2. FREE: Groq gives 14,400 calls/day.\n3. Zero monthly subscription!'
+          }
+        },
+
+        // Sticky Note: Mobile Difference
+        {
+          type: 'note',
+          x: 100,
+          y: 800,
+          props: {
+            color: 'violet',
+            size: 'm',
+            text: 'MOBILE VS WINDOWS:\n\nWindows: Global hook + Ctrl+V\n\nMobile: Sandbox blocks background typing. So mobile Wispr Flow is a Custom Keyboard (IME) with mic button!'
+          }
+        },
+
+        // Roadmap Box
+        {
+          type: 'geo',
+          x: 430,
+          y: 800,
+          props: {
+            w: 590,
+            h: 190,
+            geo: 'rectangle',
+            color: 'grey',
+            fill: 'semi',
+            size: 's',
+            text: 'OUR STEP-BY-STEP LEARNING ROADMAP:\n\n1. 01_mic_test.py (Record 5s & understand sound waves)\n2. 02_whisper_stt.py (Send to Groq/OpenAI & inspect transcript)\n3. 03_llm_cleaner.py (Prompt engineering to clean filler words)\n4. 04_global_dictate.py (Global hotkey + Ctrl+V auto-typing)\n5. 05_floating_ui.py (Sleek floating indicator UI)'
+          }
+        }
+      ]);
+
+      setTimeout(() => {
+        editor.zoomToFit({ animation: { duration: 300 } });
+        hideLoader();
+      }, 200);
+    }
+
+    function App() {
+      return React.createElement(Tldraw, {
+        onMount: (editor) => {
+          initDiagram(editor);
+        }
+      });
+    }
+
+    try {
+      const root = createRoot(document.getElementById('root'));
+      root.render(React.createElement(App));
+    } catch (err) {
+      console.error(err);
+      hideLoader();
+    }
+  </script>
+</body>
+</html>

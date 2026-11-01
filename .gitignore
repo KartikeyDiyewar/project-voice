@@ -1,0 +1,25 @@
+# Secrets & Environment
+.env
+.env.*
+!.env.example
+
+# Python cache & artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+
+# PyInstaller & Build artifacts
+build/
+dist/
+*.spec
+
+# Audio recordings & temp files
+*.wav
+*.mp3
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
