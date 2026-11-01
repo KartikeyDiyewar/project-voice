@@ -462,7 +462,8 @@ class DashboardWindow(ctk.CTk):
         self.anim_map = {
             "Wave Bars (Live Equalizer)": "wave_bars",
             "Bouncing Wave Dots": "wave_dots",
-            "Sine Wave (Fluid)": "sine_wave"
+            "Sine Wave (Fluid)": "sine_wave",
+            "Off (Static & Fastest)": "off"
         }
         self.anim_rev_map = {v: k for k, v in self.anim_map.items()}
 

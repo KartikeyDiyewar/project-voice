@@ -88,6 +88,17 @@ class FloatingIndicator:
     # FLUID ANIMATION ENGINE (30 FPS, Zero CPU overhead when idle)
     # -------------------------------------------------------------------------
     def _start_animation(self):
+        anim_style = getattr(settings, "indicator_animation", "wave_bars")
+        if anim_style in ("off", "none", "static"):
+            self.canvas.delete("all")
+            if self.current_state == "listening":
+                self.canvas.create_oval(17, 8, 27, 18, fill="#38bdf8", outline="")
+                self.text_label.configure(text="Listening...", text_color="#f8fafc")
+            elif self.current_state == "processing":
+                self.canvas.create_text(22, 13, text="✦", fill="#f59e0b", font=("Segoe UI", 12, "bold"))
+                self.text_label.configure(text="Refining voice...", text_color="#fde68a")
+            return
+
         if not self.is_animating:
             self.is_animating = True
             self.anim_phase = 0.0
