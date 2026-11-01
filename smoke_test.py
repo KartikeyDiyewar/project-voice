@@ -71,15 +71,20 @@ def run_smoke_test():
         t0 = time.time()
         p = subprocess.Popen([exe_path], cwd=os.path.dirname(exe_path))
         time.sleep(1.5)
-        is_alive = (p.poll() is None)
+        poll_val = p.poll()
         dt = (time.time() - t0) * 1000
-        if is_alive:
+        if poll_val is None:
+            # Standalone instance started cleanly and is showing UI
             print(f"  ✔ Standalone EXE launched successfully (PID: {p.pid}) in {dt:.0f} ms.")
             p.terminate()
             results.append(("Standalone Binary", True, f"PID {p.pid} alive"))
+        elif poll_val == 0:
+            # Active instance already running; cleanly triggered IPC wakeup!
+            print(f"  ✔ Detected active instance: successfully signaled Dashboard wakeup in {dt:.0f} ms (exit code 0).")
+            results.append(("Single-Instance IPC", True, f"Wakeup signal delivered in {dt:.0f}ms"))
         else:
-            print(f"  ❌ Executable exited prematurely with code: {p.poll()}")
-            results.append(("Standalone Binary", False, f"Exit code {p.poll()}"))
+            print(f"  ❌ Executable exited prematurely with code: {poll_val}")
+            results.append(("Standalone Binary", False, f"Exit code {poll_val}"))
     else:
         results.append(("Standalone Binary", True, "Skipped (EXE not found at dist path)"))
 

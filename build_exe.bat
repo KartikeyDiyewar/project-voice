@@ -28,6 +28,7 @@ python -m PyInstaller ^
 copy /Y .env.example "dist\Project Voice\.env.example" >nul 2>nul
 copy /Y settings.json "dist\Project Voice\settings.json" >nul 2>nul
 copy /Y dictionary.json "dist\Project Voice\dictionary.json" >nul 2>nul
+xcopy /E /I /Y "assets" "dist\Project Voice\assets" >nul 2>nul
 
 echo.
 echo ========================================================
