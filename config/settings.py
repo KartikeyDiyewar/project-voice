@@ -92,6 +92,16 @@ class Settings:
         return self.data.get("sound_feedback", True)
 
     @property
+    def sound_chime_prior(self) -> bool:
+        """Whether to play chime on hotkey press (start listening)."""
+        return self.data.get("sound_chime_prior", True)
+
+    @property
+    def sound_chime_after(self) -> bool:
+        """Whether to play chime on text paste (completion)."""
+        return self.data.get("sound_chime_after", True)
+
+    @property
     def sound_theme(self) -> str:
         """Sound pack theme: 'pop', 'chime', 'click', 'synth', 'classic'."""
         return self.data.get("sound_theme", "pop").lower()

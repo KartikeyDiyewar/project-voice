@@ -586,67 +586,100 @@ class DashboardWindow(ctk.CTk):
         c2_content = ctk.CTkFrame(c2, fg_color="transparent")
         c2_content.pack(fill="x", padx=20, pady=(0, 14))
 
-        # Left Option: Start with Windows with Vector Windows Logo
-        c2_left = ctk.CTkFrame(c2_content, fg_color="transparent")
-        c2_left.pack(side="left", fill="x", expand=True)
+        # Col 1: Start with Windows
+        c2_col1 = ctk.CTkFrame(c2_content, fg_color="transparent")
+        c2_col1.pack(side="left", fill="x", expand=True)
 
         win_lbl = ctk.CTkLabel(
-            c2_left,
+            c2_col1,
             text="  Start with Windows",
             image=get_icon("windows", color="#1e293b", size=(16, 16)),
             compound="left",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
             text_color="#1e293b"
         )
         win_lbl.pack(side="left")
 
         self.sw_startup = ctk.CTkSwitch(
-            c2_left,
+            c2_col1,
             text="",
-            width=46,
-            height=24,
+            width=44,
+            height=22,
             progress_color="#2b3038",
             button_color="#ffffff",
             button_hover_color="#f1f5f9",
             fg_color="#cbd5e1",
             command=self._toggle_startup
         )
-        self.sw_startup.pack(side="right", padx=(0, 16))
+        self.sw_startup.pack(side="right", padx=(0, 10))
         if self._is_startup_enabled():
             self.sw_startup.select()
 
-        # Divider line
-        div2 = ctk.CTkFrame(c2_content, width=1, height=28, fg_color="#e5e7eb")
-        div2.pack(side="left", padx=14)
+        # Divider 1
+        div2 = ctk.CTkFrame(c2_content, width=1, height=26, fg_color="#e5e7eb")
+        div2.pack(side="left", padx=10)
 
-        # Right Option: Play Chime Sound with Vector Bell Logo
-        c2_right = ctk.CTkFrame(c2_content, fg_color="transparent")
-        c2_right.pack(side="left", fill="x", expand=True)
+        # Col 2: Chime Prior (On Press)
+        c2_col2 = ctk.CTkFrame(c2_content, fg_color="transparent")
+        c2_col2.pack(side="left", fill="x", expand=True)
 
-        bell_lbl = ctk.CTkLabel(
-            c2_right,
-            text="  Play Chime Sound",
+        prior_lbl = ctk.CTkLabel(
+            c2_col2,
+            text="  Chime: Prior (Press)",
             image=get_icon("bell", color="#1e293b", size=(16, 16)),
             compound="left",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
             text_color="#1e293b"
         )
-        bell_lbl.pack(side="left")
+        prior_lbl.pack(side="left")
 
-        self.sw_sound = ctk.CTkSwitch(
-            c2_right,
+        self.sw_chime_prior = ctk.CTkSwitch(
+            c2_col2,
             text="",
-            width=46,
-            height=24,
+            width=44,
+            height=22,
             progress_color="#2b3038",
             button_color="#ffffff",
             button_hover_color="#f1f5f9",
             fg_color="#cbd5e1",
-            command=self._toggle_sound_switch
+            command=self._toggle_chime_prior
         )
-        self.sw_sound.pack(side="right")
-        if settings.sound_feedback:
-            self.sw_sound.select()
+        self.sw_chime_prior.pack(side="right", padx=(0, 10))
+        if settings.sound_feedback and settings.sound_chime_prior:
+            self.sw_chime_prior.select()
+
+        # Divider 2
+        div3 = ctk.CTkFrame(c2_content, width=1, height=26, fg_color="#e5e7eb")
+        div3.pack(side="left", padx=10)
+
+        # Col 3: Chime After (On Finish)
+        c2_col3 = ctk.CTkFrame(c2_content, fg_color="transparent")
+        c2_col3.pack(side="left", fill="x", expand=True)
+
+        after_lbl = ctk.CTkLabel(
+            c2_col3,
+            text="  Chime: After (Finish)",
+            image=get_icon("bell", color="#1e293b", size=(16, 16)),
+            compound="left",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            text_color="#1e293b"
+        )
+        after_lbl.pack(side="left")
+
+        self.sw_chime_after = ctk.CTkSwitch(
+            c2_col3,
+            text="",
+            width=44,
+            height=22,
+            progress_color="#2b3038",
+            button_color="#ffffff",
+            button_hover_color="#f1f5f9",
+            fg_color="#cbd5e1",
+            command=self._toggle_chime_after
+        )
+        self.sw_chime_after.pack(side="right")
+        if settings.sound_feedback and settings.sound_chime_after:
+            self.sw_chime_after.select()
 
         # ---------------- BOTTOM ACTIONS ROW ----------------
         bottom_actions = ctk.CTkFrame(self.page_home, fg_color="transparent")
@@ -737,27 +770,57 @@ class DashboardWindow(ctk.CTk):
 
     def _on_chime_pill_selected(self, val: str):
         if val == "none":
-            settings.update_settings({"sound_feedback": False})
-            self.sw_sound.deselect()
+            settings.update_settings({
+                "sound_feedback": False,
+                "sound_chime_prior": False,
+                "sound_chime_after": False
+            })
+            self.sw_chime_prior.deselect()
+            self.sw_chime_after.deselect()
             self._refresh_chime_pill_states("none")
         else:
-            settings.update_settings({"sound_feedback": True, "sound_theme": val})
-            self.sw_sound.select()
+            settings.update_settings({
+                "sound_feedback": True,
+                "sound_theme": val,
+                "sound_chime_prior": True,
+                "sound_chime_after": True
+            })
+            self.sw_chime_prior.select()
+            self.sw_chime_after.select()
             self._refresh_chime_pill_states(val)
-            sound.preview(val)
+            sound.preview(val, "start")
 
-    def _toggle_sound_switch(self):
-        val = bool(self.sw_sound.get() == 1)
-        settings.update_settings({"sound_feedback": val})
+    def _toggle_chime_prior(self):
+        val = bool(self.sw_chime_prior.get() == 1)
+        settings.update_settings({"sound_chime_prior": val})
         if val:
+            settings.update_settings({"sound_feedback": True})
             theme = getattr(settings, "sound_theme", "pop")
             if theme == "none":
                 theme = "pop"
                 settings.update_settings({"sound_theme": "pop"})
             self._refresh_chime_pill_states(theme)
-            sound.preview(theme)
+            sound.preview(theme, "start")
         else:
-            self._refresh_chime_pill_states("none")
+            if not self.sw_chime_after.get():
+                settings.update_settings({"sound_feedback": False})
+                self._refresh_chime_pill_states("none")
+
+    def _toggle_chime_after(self):
+        val = bool(self.sw_chime_after.get() == 1)
+        settings.update_settings({"sound_chime_after": val})
+        if val:
+            settings.update_settings({"sound_feedback": True})
+            theme = getattr(settings, "sound_theme", "pop")
+            if theme == "none":
+                theme = "pop"
+                settings.update_settings({"sound_theme": "pop"})
+            self._refresh_chime_pill_states(theme)
+            sound.preview(theme, "success")
+        else:
+            if not self.sw_chime_prior.get():
+                settings.update_settings({"sound_feedback": False})
+                self._refresh_chime_pill_states("none")
 
     def _refresh_anim_pill_states(self, active_val: str):
         for val, btn in self.anim_pill_widgets.items():

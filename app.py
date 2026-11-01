@@ -175,7 +175,6 @@ class ProjectVoiceApp:
 
     def on_hotkey_up(self):
         """Called when user releases Ctrl+Space (or F8)."""
-        sound.play_stop()
         audio_bytes = self.recorder.stop()
         target_hwnd = getattr(self, "current_hwnd", 0)
         captured_ctx = getattr(self, "current_context", "")

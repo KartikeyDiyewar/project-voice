@@ -13,6 +13,8 @@
     "temperature": 0.0
   },
   "sound_feedback": true,
+  "sound_chime_prior": true,
+  "sound_chime_after": true,
   "sound_theme": "pop",
   "indicator_animation": "wave_bars"
 }
