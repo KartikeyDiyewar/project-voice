@@ -202,7 +202,16 @@ class ProjectVoiceApp:
         except Exception as e:
             print(f"❌ STT Error: {e}")
             sound.play_error()
-            self.indicator.show_error("Key / STT Error")
+            err_str = str(e).lower()
+            if "api key" in err_str or not settings.groq_api_key:
+                err_msg = "Key Setup Required"
+            elif "connect" in err_str or "timeout" in err_str or "network" in err_str:
+                err_msg = "Offline / Network Error"
+            elif "rate" in err_str or "429" in err_str:
+                err_msg = "Groq Busy (Wait a sec)"
+            else:
+                err_msg = "Speech Error"
+            self.indicator.show_error(err_msg)
             # If key is missing, open dashboard for user
             if not settings.groq_api_key:
                 self.dashboard.after(0, self.dashboard.show_window)

@@ -1,14 +1,33 @@
 """
-Floating Visual Indicator Pill (Wispr Flow Style)
+Floating Visual Indicator Pill (Wispr Flow Style - 60 FPS Focus-Locked)
 A sleek, non-intrusive glowing pill that appears at the bottom-center of the screen
-with fluid, animated sound visualizers and dynamic moving ellipsis during speech capture and AI refining.
-Uses CTkToplevel tied to the main application root for 100% thread-safe UI updates.
+with fluid, 60 FPS animated sound visualizers and dynamic moving ellipsis.
+Features:
+- WS_EX_NOACTIVATE: 100% immune to stealing focus from active application (zero caret flicker)
+- WS_EX_TOOLWINDOW: Hidden from Alt+Tab switcher and taskbar
+- HWND_TOPMOST: Stays comfortably above fullscreen apps
+- 60 FPS liquid animation with raised-cosine easing
+- Dynamic states: Listening (Cyan), Processing (Amber), Pasted (Green), Error (Red)
 """
 
+import ctypes
+from ctypes import wintypes
 import math
 import tkinter as tk
 import customtkinter as ctk
 from config.settings import settings
+
+user32 = ctypes.windll.user32
+GWL_EXSTYLE = -20
+WS_EX_NOACTIVATE = 0x08000000
+WS_EX_TOOLWINDOW = 0x00000080
+WS_EX_TOPMOST = 0x00000008
+
+SWP_NOACTIVATE = 0x0010
+SWP_NOMOVE = 0x0002
+SWP_NOSIZE = 0x0001
+SWP_SHOWWINDOW = 0x0040
+HWND_TOPMOST = -1
 
 class FloatingIndicator:
     def __init__(self, master=None):
@@ -17,6 +36,7 @@ class FloatingIndicator:
         self.anim_phase = 0.0
         self.anim_tick_count = 0
         self.is_animating = False
+        self._hwnd = None
         self._init_window()
 
     def _init_window(self):
@@ -25,7 +45,7 @@ class FloatingIndicator:
         self.root.title("Project Voice Pill")
         self.root.overrideredirect(True)        # Borderless
         self.root.attributes("-topmost", True)   # Always on top
-        self.root.attributes("-alpha", 0.95)     # Modern sleek glass effect
+        self.root.attributes("-alpha", 0.96)     # Modern sleek glass effect
 
         # Dimensions & bottom-center positioning (Pill layout: 300x46)
         width = 300
@@ -81,11 +101,52 @@ class FloatingIndicator:
         )
         self.sub_label.pack(side="right", padx=(0, 14))
 
+        # Apply Win32 Extended Styles (Focus-Lock)
+        self.root.update_idletasks()
+        self._apply_win32_styles()
+
         # Start hidden
         self.root.withdraw()
 
+    def _get_hwnd(self) -> int:
+        if not self._hwnd and self.root:
+            try:
+                self._hwnd = user32.GetParent(self.root.winfo_id()) or self.root.winfo_id()
+            except Exception:
+                pass
+        return self._hwnd or 0
+
+    def _apply_win32_styles(self):
+        """Applies WS_EX_NOACTIVATE so pill never steals focus from active app."""
+        hwnd = self._get_hwnd()
+        if hwnd:
+            try:
+                cur_style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+                user32.SetWindowLongW(
+                    hwnd,
+                    GWL_EXSTYLE,
+                    cur_style | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST
+                )
+            except Exception:
+                pass
+
+    def _show_no_activate(self):
+        """Shows window without stealing cursor/caret focus."""
+        try:
+            self.root.deiconify()
+            hwnd = self._get_hwnd()
+            if hwnd:
+                user32.SetWindowPos(
+                    hwnd,
+                    HWND_TOPMOST,
+                    0, 0, 0, 0,
+                    SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW
+                )
+        except Exception:
+            pass
+
     # -------------------------------------------------------------------------
-    # FLUID ANIMATION ENGINE (30 FPS, Zero CPU overhead when idle)
+    # 60 FPS FLUID ANIMATION ENGINE (Zero CPU overhead when idle)
     # -------------------------------------------------------------------------
     def _start_animation(self):
         anim_style = getattr(settings, "indicator_animation", "wave_bars")
@@ -112,7 +173,8 @@ class FloatingIndicator:
         if not self.is_animating or not self.root:
             return
 
-        self.anim_phase += 0.18
+        # 60 FPS tick step
+        self.anim_phase += 0.09
         self.anim_tick_count += 1
         anim_style = getattr(settings, "indicator_animation", "wave_bars")
 
@@ -123,14 +185,14 @@ class FloatingIndicator:
                 # 3 bouncing liquid dots
                 for i in range(3):
                     cx = 11 + i * 12
-                    cy = 13 + math.sin(self.anim_phase + i * 1.5) * 5.0
-                    r = 3.0 + math.sin(self.anim_phase + i * 1.5) * 0.8
+                    cy = 13 + math.sin(self.anim_phase * 2.0 + i * 1.5) * 5.0
+                    r = 3.0 + math.sin(self.anim_phase * 2.0 + i * 1.5) * 0.8
                     self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r, fill="#38bdf8", outline="")
             elif anim_style == "sine_wave":
                 # Continuous fluid sine wave curve
                 pts = []
                 for px in range(4, 44, 3):
-                    py = 13 + math.sin(self.anim_phase + (px * 0.28)) * 6.5
+                    py = 13 + math.sin(self.anim_phase * 2.0 + (px * 0.28)) * 6.5
                     pts.extend([px, py])
                 if len(pts) >= 4:
                     self.canvas.create_line(*pts, smooth=True, width=2.6, fill="#38bdf8", capstyle=tk.ROUND)
@@ -139,11 +201,11 @@ class FloatingIndicator:
                 colors = ["#38bdf8", "#60a5fa", "#818cf8", "#a78bfa"]
                 for i in range(4):
                     x = 8 + i * 10
-                    h = 3.5 + 7.5 * (0.5 + 0.5 * math.sin(self.anim_phase + i * 1.3))
+                    h = 3.5 + 7.5 * (0.5 + 0.5 * math.sin(self.anim_phase * 2.0 + i * 1.3))
                     self.canvas.create_line(x, 13 - h, x, 13 + h, width=3.2, fill=colors[i], capstyle=tk.ROUND)
 
-            # Dynamic moving wave dots on text
-            dots_idx = (self.anim_tick_count // 7) % 4
+            # Dynamic moving wave dots on text (smooth cycle)
+            dots_idx = (self.anim_tick_count // 14) % 4
             dots_str = ["", ".", ". .", ". . ."][dots_idx]
             self.text_label.configure(text=f"Listening {dots_str}", text_color="#f8fafc")
 
@@ -152,14 +214,15 @@ class FloatingIndicator:
             colors = ["#fbbf24", "#f59e0b", "#d97706", "#f59e0b"]
             for i in range(4):
                 x = 8 + i * 10
-                h = 3.0 + 5.5 * (0.5 + 0.5 * math.sin(self.anim_phase * 1.4 + i * 1.1))
+                h = 3.0 + 5.5 * (0.5 + 0.5 * math.sin(self.anim_phase * 2.8 + i * 1.1))
                 self.canvas.create_line(x, 13 - h, x, 13 + h, width=3.0, fill=colors[i], capstyle=tk.ROUND)
 
-            dots_idx = (self.anim_tick_count // 7) % 4
+            dots_idx = (self.anim_tick_count // 14) % 4
             dots_str = ["", ".", ". .", ". . ."][dots_idx]
             self.text_label.configure(text=f"Refining voice {dots_str}", text_color="#fde68a")
 
-        self.root.after(30, self._tick_animation)
+        # Schedule next frame at 16ms (~60 FPS)
+        self.root.after(16, self._tick_animation)
 
     # -------------------------------------------------------------------------
     # STATE TRANSITIONS
@@ -173,8 +236,7 @@ class FloatingIndicator:
             self.container.configure(border_color="#38bdf8")
             self.sub_label.configure(text=f"[ {settings.hotkey.upper()} ]", text_color="#94a3b8")
             self._start_animation()
-            self.root.deiconify()
-            self.root.lift()
+            self._show_no_activate()
         self.root.after(0, _apply)
 
     def show_processing(self):
@@ -186,8 +248,7 @@ class FloatingIndicator:
             self.container.configure(border_color="#f59e0b")
             self.sub_label.configure(text="Groq LPU", text_color="#f59e0b")
             self._start_animation()
-            self.root.deiconify()
-            self.root.lift()
+            self._show_no_activate()
         self.root.after(0, _apply)
 
     def show_pasted(self):
@@ -214,7 +275,7 @@ class FloatingIndicator:
             self.canvas.delete("all")
             self.canvas.create_text(23, 13, text="✕", fill="#f87171", font=("Segoe UI", 12, "bold"))
             self.container.configure(border_color="#f87171")
-            self.text_label.configure(text=message[:18], text_color="#fca5a5")
+            self.text_label.configure(text=message[:20], text_color="#fca5a5")
             self.sub_label.configure(text="Error", text_color="#f87171")
             self.root.after(1400, self._hide_if_idle)
         self.root.after(0, _apply)

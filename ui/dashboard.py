@@ -3,6 +3,8 @@ Project Voice - Windows 11 Modern Desktop Control Center
 Faithfully aligned with the official Project Voice Desktop Interface design:
 - Left Sidebar with brand logo, sleek navigation pills, connection status & version
 - Windows 11 Light Fluent theme with clean white cards and rounded geometry
+- DWM Windows 11 integration (seamless caption bar, hardware rounded corners)
+- Razor-sharp monochrome vector icons (zero OS emoji font inconsistencies)
 - Hero Dark Card with white key shortcut pills and audio wave graphics
 - Sound & Animation Card with segmented pill selectors
 - Options Card with Start with Windows and Play Chime Sound modern switches
@@ -33,6 +35,7 @@ import customtkinter as ctk
 from groq import Groq
 from config.settings import settings
 from utils.sound_feedback import sound
+from ui.icons import get_icon
 
 # Appearance setup
 ctk.set_appearance_mode("light")
@@ -73,6 +76,7 @@ class DashboardWindow(ctk.CTk):
         # Track active navigation tab
         self.active_tab = "Home"
         self.nav_buttons = {}
+        self.nav_icon_keys = {}
         self.pages = {}
 
         # Pill options definitions
@@ -91,6 +95,37 @@ class DashboardWindow(ctk.CTk):
         ]
 
         self._build_layout()
+
+        # Apply Windows 11 DWM Seamless Caption & Rounded Corners
+        self.update_idletasks()
+        self._apply_windows11_dwm()
+
+    # -------------------------------------------------------------------------
+    # DWM WINDOWS 11 INTEGRATION
+    # -------------------------------------------------------------------------
+    def _apply_windows11_dwm(self):
+        """Blends the titlebar into #f3f4f6 and activates native Win11 rounded corners."""
+        try:
+            hwnd = ctypes.windll.user32.GetParent(self.winfo_id()) or self.winfo_id()
+            if hwnd:
+                dwm = ctypes.windll.dwmapi
+                # DWMWA_CAPTION_COLOR = 35 -> #f3f4f6 (COLORREF = 0x00F6F4F3)
+                caption_color = ctypes.c_int(0x00F6F4F3)
+                dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(caption_color), ctypes.sizeof(caption_color))
+
+                # DWMWA_TEXT_COLOR = 36 -> #0f172a (COLORREF = 0x002A170F)
+                text_color = ctypes.c_int(0x002A170F)
+                dwm.DwmSetWindowAttribute(hwnd, 36, ctypes.byref(text_color), ctypes.sizeof(text_color))
+
+                # DWMWA_WINDOW_CORNER_PREFERENCE = 33 -> DWMWCP_ROUND = 2
+                corner_pref = ctypes.c_int(2)
+                dwm.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(corner_pref), ctypes.sizeof(corner_pref))
+
+                # DWMWA_BORDER_COLOR = 34 -> #e5e7eb (COLORREF = 0x00EBE7E5)
+                border_color = ctypes.c_int(0x00EBE7E5)
+                dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(border_color), ctypes.sizeof(border_color))
+        except Exception:
+            pass
 
     # -------------------------------------------------------------------------
     # MAIN LAYOUT: SIDEBAR + CONTENT AREA
@@ -128,7 +163,7 @@ class DashboardWindow(ctk.CTk):
         logo_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         logo_frame.pack(fill="x", padx=18, pady=(24, 28))
 
-        # Dark rounded square with microphone graphic
+        # Dark rounded square with crisp vector mic
         icon_canvas = ctk.CTkCanvas(
             logo_frame,
             width=36,
@@ -156,22 +191,25 @@ class DashboardWindow(ctk.CTk):
         )
         logo_title.pack(side="left")
 
-        # Navigation Items
+        # Navigation Items with Monochrome Vector Icons
         nav_items = [
-            ("Home", "⌂"),
-            ("Voice Typing", "🎙"),
-            ("Shortcuts", "⌨"),
-            ("Settings", "⚙"),
-            ("About", "ℹ")
+            ("Home", "home"),
+            ("Voice Typing", "voice"),
+            ("Shortcuts", "shortcuts"),
+            ("Settings", "settings"),
+            ("About", "about")
         ]
 
         nav_box = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         nav_box.pack(fill="x", padx=14, pady=0)
 
-        for name, icon in nav_items:
+        for name, icon_key in nav_items:
+            img = get_icon(icon_key, color="#4b5563", size=(18, 18))
             btn = ctk.CTkButton(
                 nav_box,
-                text=f"  {icon}   {name}",
+                text=f"  {name}",
+                image=img,
+                compound="left",
                 anchor="w",
                 font=ctk.CTkFont(family="Segoe UI", size=13, weight="normal"),
                 height=38,
@@ -183,6 +221,7 @@ class DashboardWindow(ctk.CTk):
             )
             btn.pack(fill="x", pady=4)
             self.nav_buttons[name] = btn
+            self.nav_icon_keys[name] = icon_key
 
         # Spacer pushing footer to bottom
         spacer = ctk.CTkFrame(self.sidebar, fg_color="transparent")
@@ -264,10 +303,12 @@ class DashboardWindow(ctk.CTk):
     def _switch_page(self, page_name: str):
         self.active_tab = page_name
 
-        # Update sidebar button appearances
+        # Update sidebar button appearances & icon tint dynamically
         for name, btn in self.nav_buttons.items():
+            icon_key = self.nav_icon_keys.get(name, "home")
             if name == page_name:
                 btn.configure(
+                    image=get_icon(icon_key, color="#ffffff", size=(18, 18)),
                     fg_color="#2b3038",
                     text_color="#ffffff",
                     hover_color="#1f2328",
@@ -275,6 +316,7 @@ class DashboardWindow(ctk.CTk):
                 )
             else:
                 btn.configure(
+                    image=get_icon(icon_key, color="#4b5563", size=(18, 18)),
                     fg_color="transparent",
                     text_color="#4b5563",
                     hover_color="#e2e8f0",
@@ -439,7 +481,7 @@ class DashboardWindow(ctk.CTk):
         c1_content = ctk.CTkFrame(c1, fg_color="transparent")
         c1_content.pack(fill="x", padx=20, pady=(0, 14))
 
-        # Column Left: Chime Sound
+        # Column Left: Chime Sound with Vector Bell Icon
         c1_left = ctk.CTkFrame(c1_content, fg_color="transparent")
         c1_left.pack(side="left", fill="x", expand=True)
 
@@ -448,7 +490,9 @@ class DashboardWindow(ctk.CTk):
 
         chime_lbl = ctk.CTkLabel(
             chime_label_row,
-            text="🔔 Chime Sound",
+            text="  Chime Sound",
+            image=get_icon("bell", color="#1e293b", size=(16, 16)),
+            compound="left",
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             text_color="#1e293b"
         )
@@ -483,7 +527,7 @@ class DashboardWindow(ctk.CTk):
         div1 = ctk.CTkFrame(c1_content, width=1, height=28, fg_color="#e5e7eb")
         div1.pack(side="left", padx=14)
 
-        # Column Right: Wave Animation
+        # Column Right: Wave Animation with Vector Wave Icon
         c1_right = ctk.CTkFrame(c1_content, fg_color="transparent")
         c1_right.pack(side="left", fill="x", expand=True)
 
@@ -492,7 +536,9 @@ class DashboardWindow(ctk.CTk):
 
         anim_lbl = ctk.CTkLabel(
             anim_label_row,
-            text="ılı Wave Animation",
+            text="  Wave Animation",
+            image=get_icon("wave", color="#1e293b", size=(16, 16)),
+            compound="left",
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             text_color="#1e293b"
         )
@@ -540,13 +586,15 @@ class DashboardWindow(ctk.CTk):
         c2_content = ctk.CTkFrame(c2, fg_color="transparent")
         c2_content.pack(fill="x", padx=20, pady=(0, 14))
 
-        # Left Option: Start with Windows
+        # Left Option: Start with Windows with Vector Windows Logo
         c2_left = ctk.CTkFrame(c2_content, fg_color="transparent")
         c2_left.pack(side="left", fill="x", expand=True)
 
         win_lbl = ctk.CTkLabel(
             c2_left,
-            text="⊞  Start with Windows",
+            text="  Start with Windows",
+            image=get_icon("windows", color="#1e293b", size=(16, 16)),
+            compound="left",
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             text_color="#1e293b"
         )
@@ -571,13 +619,15 @@ class DashboardWindow(ctk.CTk):
         div2 = ctk.CTkFrame(c2_content, width=1, height=28, fg_color="#e5e7eb")
         div2.pack(side="left", padx=14)
 
-        # Right Option: Play Chime Sound
+        # Right Option: Play Chime Sound with Vector Bell Logo
         c2_right = ctk.CTkFrame(c2_content, fg_color="transparent")
         c2_right.pack(side="left", fill="x", expand=True)
 
         bell_lbl = ctk.CTkLabel(
             c2_right,
-            text="🔔  Play Chime Sound",
+            text="  Play Chime Sound",
+            image=get_icon("bell", color="#1e293b", size=(16, 16)),
+            compound="left",
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             text_color="#1e293b"
         )
@@ -604,7 +654,9 @@ class DashboardWindow(ctk.CTk):
 
         test_btn = ctk.CTkButton(
             bottom_actions,
-            text="▶   Test Voice Typing",
+            text="  Test Voice Typing",
+            image=get_icon("play", color="#ffffff", size=(12, 12)),
+            compound="left",
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             fg_color="#2b3038",
             hover_color="#1f2328",
@@ -618,7 +670,9 @@ class DashboardWindow(ctk.CTk):
 
         words_btn = ctk.CTkButton(
             bottom_actions,
-            text="⌨   Custom Words",
+            text="  Custom Words",
+            image=get_icon("words", color="#1e293b", size=(16, 16)),
+            compound="left",
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             fg_color="#ffffff",
             hover_color="#f8fafc",
