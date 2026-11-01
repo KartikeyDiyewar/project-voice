@@ -121,6 +121,7 @@ class FloatingIndicator:
         if not self.root:
             return
         def _apply():
+            self.current_state = "error"
             self.dot_label.configure(text="✕", text_color="#f87171")
             self.container.configure(border_color="#f87171")
             self.text_label.configure(text=message[:18], text_color="#fca5a5")
@@ -128,7 +129,7 @@ class FloatingIndicator:
         self.root.after(0, _apply)
 
     def _hide_if_idle(self):
-        if self.current_state in ("pasted", "idle"):
+        if self.current_state in ("pasted", "idle", "error"):
             self.current_state = "idle"
             self.root.withdraw()
 

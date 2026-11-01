@@ -19,10 +19,37 @@ Modular, Extensible, Production Architecture:
 """
 
 import ctypes
+from ctypes import wintypes
 import os
 import sys
 import threading
 import time
+
+user32 = ctypes.windll.user32
+kernel32 = ctypes.windll.kernel32
+
+# Explicit 64-bit Win32 API signatures (prevents pointer truncation)
+user32.GetForegroundWindow.restype = wintypes.HWND
+user32.GetForegroundWindow.argtypes = []
+user32.SetForegroundWindow.restype = wintypes.BOOL
+user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+user32.GetWindowTextLengthW.restype = ctypes.c_int
+user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+user32.GetWindowTextW.restype = ctypes.c_int
+user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+
+kernel32.CreateMutexW.restype = wintypes.HANDLE
+kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+kernel32.OpenEventW.restype = wintypes.HANDLE
+kernel32.OpenEventW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
+kernel32.CreateEventW.restype = wintypes.HANDLE
+kernel32.CreateEventW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR]
+kernel32.SetEvent.restype = wintypes.BOOL
+kernel32.SetEvent.argtypes = [wintypes.HANDLE]
+kernel32.CloseHandle.restype = wintypes.BOOL
+kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+kernel32.WaitForSingleObject.restype = wintypes.DWORD
+kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
 
 # -----------------------------------------------------------------------------
 # 1. Single Instance Mutex + Named Event IPC
@@ -30,13 +57,13 @@ import time
 ERROR_ALREADY_EXISTS = 183
 EVENT_MODIFY_STATE = 0x0002
 
-_app_mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "ProjectVoice_SingleInstance_Mutex")
-if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+_app_mutex = kernel32.CreateMutexW(None, False, "ProjectVoice_SingleInstance_Mutex")
+if kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
     # Existing instance detected! Signal it to bring its Dashboard window to the front:
-    event = ctypes.windll.kernel32.OpenEventW(EVENT_MODIFY_STATE, False, "ProjectVoice_ShowEvent")
+    event = kernel32.OpenEventW(EVENT_MODIFY_STATE, False, "ProjectVoice_ShowEvent")
     if event:
-        ctypes.windll.kernel32.SetEvent(event)
-        ctypes.windll.kernel32.CloseHandle(event)
+        kernel32.SetEvent(event)
+        kernel32.CloseHandle(event)
     sys.exit(0)
 
 # Windows UTF-8 console output fix (safe under both python.exe and pythonw.exe)
@@ -49,7 +76,6 @@ if sys.stdout is not None and getattr(sys.stdout, "encoding", None) != 'utf-8':
 def get_active_window_title() -> str:
     """Retrieves foreground active application window title for context awareness."""
     try:
-        user32 = ctypes.windll.user32
         hwnd = user32.GetForegroundWindow()
         if hwnd:
             length = user32.GetWindowTextLengthW(hwnd)
@@ -97,6 +123,7 @@ class ProjectVoiceApp:
         self.stt = GroqSTTProvider()
         self.llm = LLMFormatter()
         self.injector = TextInjector()
+        self.injection_lock = threading.Lock()
 
         # 4. Global Hotkey Manager
         self.hotkey_mgr = HotkeyManager(
@@ -111,13 +138,13 @@ class ProjectVoiceApp:
         )
 
         # 6. Win32 Named Event for Single-Instance Wakeup
-        self.show_event = ctypes.windll.kernel32.CreateEventW(None, False, False, "ProjectVoice_ShowEvent")
+        self.show_event = kernel32.CreateEventW(None, False, False, "ProjectVoice_ShowEvent")
         self._start_event_listener()
 
     def _start_event_listener(self):
         def _listen():
             while self.is_running:
-                res = ctypes.windll.kernel32.WaitForSingleObject(self.show_event, 800)
+                res = kernel32.WaitForSingleObject(self.show_event, 800)
                 if res == 0:  # WAIT_OBJECT_0 triggered by another launch attempt!
                     self.dashboard.after(0, self.dashboard.show_window)
         threading.Thread(target=_listen, daemon=True).start()
@@ -133,8 +160,8 @@ class ProjectVoiceApp:
 
     def on_hotkey_down(self):
         """Called when user presses and holds Ctrl+Space (or F8)."""
-        self.target_hwnd = ctypes.windll.user32.GetForegroundWindow()
-        self.active_context = get_active_window_title()
+        self.current_hwnd = user32.GetForegroundWindow()
+        self.current_context = get_active_window_title()
         sound.play_start()
         self.recorder.start()
         self.indicator.show_listening()
@@ -144,6 +171,8 @@ class ProjectVoiceApp:
         """Called when user releases Ctrl+Space (or F8)."""
         sound.play_stop()
         audio_bytes = self.recorder.stop()
+        target_hwnd = getattr(self, "current_hwnd", 0)
+        captured_ctx = getattr(self, "current_context", "")
         print("🛑 [STOPPED] Processing in memory...")
 
         if not audio_bytes:
@@ -152,9 +181,13 @@ class ProjectVoiceApp:
             return
 
         self.indicator.show_processing()
-        threading.Thread(target=self._process_pipeline, args=(audio_bytes,), daemon=True).start()
+        threading.Thread(
+            target=self._process_pipeline,
+            args=(audio_bytes, captured_ctx, target_hwnd),
+            daemon=True
+        ).start()
 
-    def _process_pipeline(self, audio_bytes: bytes):
+    def _process_pipeline(self, audio_bytes: bytes, context: str, target_hwnd: int):
         pipeline_start = time.time()
 
         # 1. Whisper Speech-to-Text
@@ -178,7 +211,7 @@ class ProjectVoiceApp:
 
         # 2. AI Formatting & Cleanup
         try:
-            clean_text, llm_ms = self.llm.format(raw_text, context=getattr(self, "active_context", ""))
+            clean_text, llm_ms = self.llm.format(raw_text, context=context)
         except Exception as e:
             print(f"❌ LLM Error: {e}, falling back to raw text.")
             clean_text = raw_text
@@ -186,10 +219,11 @@ class ProjectVoiceApp:
 
         print(f"✨ AI Cleaned   : \"{clean_text}\" ({llm_ms:.0f} ms)")
 
-        # 3. OS Auto-Paste Injection
-        self.injector.paste(clean_text, target_hwnd=getattr(self, "target_hwnd", 0))
-        sound.play_success()
-        self.indicator.show_pasted()
+        # 3. OS Auto-Paste Injection (Serialized via lock to prevent clipboard collisions)
+        with self.injection_lock:
+            self.injector.paste(clean_text, target_hwnd=target_hwnd)
+            sound.play_success()
+            self.indicator.show_pasted()
 
         total_ms = (time.time() - pipeline_start) * 1000
         print(f"✅ [AUTO-PASTED!] Total Time: {total_ms:.0f} ms")
@@ -221,11 +255,31 @@ class ProjectVoiceApp:
             self.shutdown()
 
     def shutdown(self):
-        """Gracefully stops the application."""
+        """Gracefully stops the application and releases all hardware & OS handles."""
         print("Shutting down Project Voice...")
         self.is_running = False
-        self.tray.stop()
-        self.hotkey_mgr.stop()
+        try:
+            self.tray.stop()
+        except Exception:
+            pass
+        try:
+            self.hotkey_mgr.stop()
+        except Exception:
+            pass
+        try:
+            self.recorder.close()
+        except Exception:
+            pass
+        if hasattr(self, "show_event") and self.show_event:
+            try:
+                kernel32.CloseHandle(self.show_event)
+            except Exception:
+                pass
+        if _app_mutex:
+            try:
+                kernel32.CloseHandle(_app_mutex)
+            except Exception:
+                pass
         try:
             self.dashboard.destroy()
         except Exception:

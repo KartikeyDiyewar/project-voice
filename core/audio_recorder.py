@@ -57,6 +57,9 @@ class AudioRecorder:
             print(f"Error opening persistent audio stream: {e}")
 
     def _audio_callback(self, indata, frames, time_info, status):
+        if status:
+            # Non-blocking diagnostic for stream dropouts / buffer overflows
+            pass
         flat_data = indata.flatten()
         with self.buffer_lock:
             self.ring_buffer.extend(flat_data)
@@ -105,10 +108,12 @@ class AudioRecorder:
             return b""
 
         # Gentle Peak Normalization to ~ -3 dBFS (22,000 max) without zero-padding
-        max_val = np.max(np.abs(full_audio))
+        # Convert to float32 first to safely prevent -32768 int16 absolute value overflow
+        audio_float = full_audio.astype(np.float32)
+        max_val = np.max(np.abs(audio_float))
         if 500 < max_val < 18000:
             scale = 22000.0 / max_val
-            full_audio = np.clip(full_audio.astype(np.float32) * scale, -32768, 32767).astype(np.int16)
+            full_audio = np.clip(audio_float * scale, -32768, 32767).astype(np.int16)
 
         # Pack into pure in-memory WAV buffer (Standard library wave, zero disk I/O)
         wav_io = io.BytesIO()
@@ -119,6 +124,21 @@ class AudioRecorder:
             wf.writeframes(full_audio.tobytes())
 
         return wav_io.getvalue()
+
+    def close(self):
+        """Explicitly stops and releases microphone stream and audio buffers."""
+        with self.buffer_lock:
+            self.is_recording = False
+            self.is_stopping = False
+            self.active_buffer.clear()
+            self.ring_buffer.clear()
+        if self.stream:
+            try:
+                self.stream.stop()
+                self.stream.close()
+            except Exception:
+                pass
+            self.stream = None
 
     @property
     def active(self) -> bool:

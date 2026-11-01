@@ -62,14 +62,18 @@ class GroqSTTProvider:
 
         start_time = time.time()
 
-        response = self.client.audio.transcriptions.create(
-            file=("speech.wav", audio_bytes),
-            model=self.model,
-            language="en",
-            prompt=self._get_primed_prompt(),
-            temperature=0.0,
-            response_format="verbose_json"
-        )
+        transcribe_kwargs = {
+            "file": ("speech.wav", audio_bytes),
+            "model": self.model,
+            "prompt": self._get_primed_prompt(),
+            "temperature": 0.0,
+            "response_format": "verbose_json"
+        }
+        # If language is explicitly set (e.g. 'en' or 'hi'), apply it. Default None allows natural code-switching.
+        if getattr(settings, "stt_language", None):
+            transcribe_kwargs["language"] = settings.stt_language
+
+        response = self.client.audio.transcriptions.create(**transcribe_kwargs)
 
         latency = (time.time() - start_time) * 1000
 
@@ -92,5 +96,9 @@ class GroqSTTProvider:
             raw_text = " ".join(segs).strip()
         else:
             raw_text = response.text.strip() if hasattr(response, "text") and response.text else ""
+
+        # Safety Fallback: if segment filtering discarded all text but Whisper returned speech text
+        if not raw_text and hasattr(response, "text") and response.text:
+            raw_text = response.text.strip()
 
         return raw_text, latency

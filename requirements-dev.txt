@@ -1,0 +1,10 @@
+# Development, Testing & Packaging Dependencies
+-r requirements.txt
+
+# Standalone Windows Binary Compiler
+pyinstaller>=6.10.0
+
+# Automated Testing
+pytest>=8.0.0
+pytest-timeout>=2.3.1
+pytest-mock>=3.14.0

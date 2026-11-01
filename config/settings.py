@@ -22,13 +22,17 @@ ENV_FILE = BASE_DIR / ".env"
 load_dotenv(dotenv_path=ENV_FILE)
 
 class Settings:
-    def __init__(self):
+    def __init__(self, settings_file: Path = None, env_file: Path = None):
         self.base_dir = BASE_DIR
+        self.settings_file = settings_file or SETTINGS_FILE
+        self.env_file = env_file or ENV_FILE
+        if self.env_file.exists():
+            load_dotenv(dotenv_path=self.env_file)
         self.groq_api_key = os.getenv("GROQ_API_KEY", "")
         self.data = self._load_json()
 
     def _load_json(self):
-        if not SETTINGS_FILE.exists():
+        if not self.settings_file.exists():
             return {
                 "hotkey": "ctrl+space",
                 "fallback_hotkey": "f8",
@@ -43,10 +47,10 @@ class Settings:
                 "sound_feedback": True
             }
         try:
-            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+            with open(self.settings_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
-            print(f"Error loading settings.json: {e}")
+            print(f"Error loading {self.settings_file.name}: {e}")
             return {}
 
     @property
@@ -70,6 +74,12 @@ class Settings:
         return self.data.get("ai", {}).get("stt_model", "whisper-large-v3-turbo")
 
     @property
+    def stt_language(self) -> str | None:
+        """Language code for Whisper. Default 'auto' (None) permits natural code-switching without English acoustic bias."""
+        lang = self.data.get("ai", {}).get("stt_language", "auto")
+        return None if lang in ("auto", "none", None, "") else lang
+
+    @property
     def llm_model(self) -> str:
         return self.data.get("ai", {}).get("llm_model", "qwen/qwen3.8-27b")
 
@@ -81,23 +91,39 @@ class Settings:
     def sound_feedback(self) -> bool:
         return self.data.get("sound_feedback", True)
 
-    def update_api_key(self, api_key: str):
-        """Saves GROQ_API_KEY to runtime environment and .env file."""
+    def update_api_key(self, api_key: str) -> bool:
+        """Saves GROQ_API_KEY to runtime environment and .env file atomically."""
         self.groq_api_key = api_key.strip()
         os.environ["GROQ_API_KEY"] = self.groq_api_key
         try:
-            with open(ENV_FILE, "w", encoding="utf-8") as f:
+            temp_env = self.env_file.with_suffix(".tmp")
+            with open(temp_env, "w", encoding="utf-8") as f:
                 f.write(f"GROQ_API_KEY={self.groq_api_key}\n")
+            temp_env.replace(self.env_file)
+            return True
         except Exception as e:
-            print(f"Error saving .env: {e}")
+            print(f"Error saving {self.env_file.name}: {e}")
+            return False
 
-    def update_settings(self, updates: dict):
-        """Updates and persists settings.json."""
-        self.data.update(updates)
+    def update_settings(self, updates: dict) -> bool:
+        """Deep-merges updates and persists settings.json atomically."""
+        def _deep_merge(target, source):
+            for k, v in source.items():
+                if isinstance(v, dict) and k in target and isinstance(target[k], dict):
+                    _deep_merge(target[k], v)
+                else:
+                    target[k] = v
+
+        _deep_merge(self.data, updates)
         try:
-            with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            temp_settings = self.settings_file.with_suffix(".tmp")
+            with open(temp_settings, "w", encoding="utf-8") as f:
                 json.dump(self.data, f, indent=2)
+            temp_settings.replace(self.settings_file)
+            return True
         except Exception as e:
+            print(f"Error saving {self.settings_file.name}: {e}")
+            return False
             print(f"Error saving settings.json: {e}")
 
 settings = Settings()

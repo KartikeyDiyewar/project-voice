@@ -9,11 +9,14 @@ Features:
 """
 
 import ctypes
+from ctypes import wintypes
 import threading
 from pynput import keyboard
 from config.settings import settings
 
 user32 = ctypes.windll.user32
+user32.GetAsyncKeyState.restype = ctypes.c_short
+user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
 
 # Win32 Virtual Key Constants
 VK_CONTROL = 0x11
@@ -42,10 +45,17 @@ class HotkeyManager:
     def reload_keys(self):
         """Updates hotkeys dynamically if changed in settings."""
         with self.lock:
+            was_active = self.is_active
             self.primary_hotkey_str = settings.hotkey.lower()
             self.fallback_hotkey_str = settings.fallback_hotkey.lower()
             self.currently_pressed.clear()
             self.is_active = False
+
+        if was_active and self.on_stop_callback:
+            try:
+                self.on_stop_callback()
+            except Exception:
+                pass
 
     def _matches_ctrl(self, key):
         return key in {keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r}
