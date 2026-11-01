@@ -150,8 +150,11 @@ class FloatingIndicator:
     # -------------------------------------------------------------------------
     def _start_animation(self):
         anim_style = getattr(settings, "indicator_animation", "wave_bars")
+        self._bar_items = []
+        self._dot_items = []
+        self.canvas.delete("all")
+
         if anim_style in ("off", "none", "static"):
-            self.canvas.delete("all")
             if self.current_state == "listening":
                 self.canvas.create_oval(17, 8, 27, 18, fill="#38bdf8", outline="")
                 self.text_label.configure(text="Listening...", text_color="#f8fafc")
@@ -168,6 +171,8 @@ class FloatingIndicator:
 
     def _stop_animation(self):
         self.is_animating = False
+        self._bar_items = []
+        self._dot_items = []
 
     def _tick_animation(self):
         if not self.is_animating or not self.root:
@@ -178,44 +183,60 @@ class FloatingIndicator:
         self.anim_tick_count += 1
         anim_style = getattr(settings, "indicator_animation", "wave_bars")
 
-        self.canvas.delete("all")
-
         if self.current_state == "listening":
             if anim_style == "wave_dots":
-                # 3 bouncing liquid dots
-                for i in range(3):
+                if not getattr(self, "_dot_items", None):
+                    self.canvas.delete("all")
+                    self._dot_items = [
+                        self.canvas.create_oval(0, 0, 0, 0, fill="#38bdf8", outline="")
+                        for _ in range(3)
+                    ]
+                for i, item in enumerate(self._dot_items):
                     cx = 11 + i * 12
                     cy = 13 + math.sin(self.anim_phase * 2.0 + i * 1.5) * 5.0
                     r = 3.0 + math.sin(self.anim_phase * 2.0 + i * 1.5) * 0.8
-                    self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r, fill="#38bdf8", outline="")
+                    self.canvas.coords(item, cx - r, cy - r, cx + r, cy + r)
+
             elif anim_style == "sine_wave":
-                # Continuous fluid sine wave curve
+                self.canvas.delete("all")
                 pts = []
                 for px in range(4, 44, 3):
                     py = 13 + math.sin(self.anim_phase * 2.0 + (px * 0.28)) * 6.5
                     pts.extend([px, py])
                 if len(pts) >= 4:
                     self.canvas.create_line(*pts, smooth=True, width=2.6, fill="#38bdf8", capstyle=tk.ROUND)
+
             else:
-                # Default: "wave_bars" (4 vibrant fluid equalizer bars)
-                colors = ["#38bdf8", "#60a5fa", "#818cf8", "#a78bfa"]
-                for i in range(4):
+                # Default: "wave_bars" (Zero-allocation coords update)
+                if not getattr(self, "_bar_items", None):
+                    self.canvas.delete("all")
+                    colors = ["#38bdf8", "#60a5fa", "#818cf8", "#a78bfa"]
+                    self._bar_items = [
+                        self.canvas.create_line(8 + i * 10, 13, 8 + i * 10, 13, width=3.2, fill=colors[i], capstyle=tk.ROUND)
+                        for i in range(4)
+                    ]
+                for i, item in enumerate(self._bar_items):
                     x = 8 + i * 10
                     h = 3.5 + 7.5 * (0.5 + 0.5 * math.sin(self.anim_phase * 2.0 + i * 1.3))
-                    self.canvas.create_line(x, 13 - h, x, 13 + h, width=3.2, fill=colors[i], capstyle=tk.ROUND)
+                    self.canvas.coords(item, x, 13 - h, x, 13 + h)
 
-            # Dynamic moving wave dots on text (smooth cycle)
+            # Dynamic moving wave dots on text
             dots_idx = (self.anim_tick_count // 14) % 4
             dots_str = ["", ".", ". .", ". . ."][dots_idx]
             self.text_label.configure(text=f"Listening {dots_str}", text_color="#f8fafc")
 
         elif self.current_state == "processing":
-            # Amber shimmering equalizer wave
-            colors = ["#fbbf24", "#f59e0b", "#d97706", "#f59e0b"]
-            for i in range(4):
+            if not getattr(self, "_bar_items", None):
+                self.canvas.delete("all")
+                colors = ["#fbbf24", "#f59e0b", "#d97706", "#f59e0b"]
+                self._bar_items = [
+                    self.canvas.create_line(8 + i * 10, 13, 8 + i * 10, 13, width=3.0, fill=colors[i], capstyle=tk.ROUND)
+                    for i in range(4)
+                ]
+            for i, item in enumerate(self._bar_items):
                 x = 8 + i * 10
                 h = 3.0 + 5.5 * (0.5 + 0.5 * math.sin(self.anim_phase * 2.8 + i * 1.1))
-                self.canvas.create_line(x, 13 - h, x, 13 + h, width=3.0, fill=colors[i], capstyle=tk.ROUND)
+                self.canvas.coords(item, x, 13 - h, x, 13 + h)
 
             dots_idx = (self.anim_tick_count // 14) % 4
             dots_str = ["", ".", ". .", ". . ."][dots_idx]

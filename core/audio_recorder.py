@@ -87,8 +87,8 @@ class AudioRecorder:
                 return b""
             self.is_stopping = True
 
-        # Release tail: wait 200ms so final syllable decays naturally
-        time.sleep(0.20)
+        # Optimized release tail: 100ms captures natural vocal room decay without dead latency
+        time.sleep(0.10)
 
         with self.buffer_lock:
             self.is_recording = False

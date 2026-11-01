@@ -50,7 +50,7 @@ class TextInjector:
             # 1. Update clipboard with dictated text
             pyperclip.copy(text)
             injected_seq = self._get_seq_num()
-            time.sleep(0.04)  # Small pause to allow OS clipboard synchronization
+            time.sleep(0.015)  # Fast OS clipboard synchronization (15ms)
 
             # 2. Fire virtual Ctrl + V
             with self.keyboard_controller.pressed(keyboard.Key.ctrl):
