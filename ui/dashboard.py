@@ -48,15 +48,15 @@ class DashboardWindow(ctk.CTk):
 
         # Window properties
         self.title("Project Voice — Voice Typing")
-        self.geometry("680x640")
+        self.geometry("680x690")
         self.resizable(False, False)
 
         # Center on screen
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
         x = max(50, (screen_w - 680) // 2)
-        y = max(50, (screen_h - 640) // 2)
-        self.geometry(f"680x640+{x}+{y}")
+        y = max(50, (screen_h - 690) // 2)
+        self.geometry(f"680x690+{x}+{y}")
         self.configure(fg_color=("#f8fafc", "#0f172a"))
 
         # Set taskbar icon if exists
@@ -379,7 +379,7 @@ class DashboardWindow(ctk.CTk):
 
         # Row 1: Toggles
         r1 = ctk.CTkFrame(inner, fg_color="transparent")
-        r1.pack(fill="x", pady=(0, 8))
+        r1.pack(fill="x", pady=(0, 10))
 
         self.sw_startup = ctk.CTkSwitch(
             r1,
@@ -394,7 +394,7 @@ class DashboardWindow(ctk.CTk):
 
         self.sw_sound = ctk.CTkSwitch(
             r1,
-            text="Play sound chimes",
+            text="Play audio chimes",
             font=ctk.CTkFont(family="Segoe UI", size=11),
             text_color=("#334155", "#cbd5e1"),
             command=self._toggle_sound
@@ -403,12 +403,89 @@ class DashboardWindow(ctk.CTk):
         if settings.sound_feedback:
             self.sw_sound.select()
 
-        # Row 2: Hotkey + Custom Words button
+        # Row 2: Chime Style + Test button + Pill Animation
         r2 = ctk.CTkFrame(inner, fg_color="transparent")
-        r2.pack(fill="x")
+        r2.pack(fill="x", pady=(0, 10))
+
+        sound_lbl = ctk.CTkLabel(
+            r2,
+            text="Chime:",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            text_color=("#0f172a", "#f8fafc")
+        )
+        sound_lbl.pack(side="left", padx=(0, 6))
+
+        self.theme_map = {
+            "Pop (Wispr Flow)": "pop",
+            "Chime (Raycast)": "chime",
+            "Click (Tactile)": "click",
+            "Synth (Warm)": "synth",
+            "Classic Beep": "classic"
+        }
+        self.theme_rev_map = {v: k for k, v in self.theme_map.items()}
+
+        curr_theme = getattr(settings, "sound_theme", "pop")
+        curr_label = self.theme_rev_map.get(curr_theme, "Pop (Wispr Flow)")
+
+        self.theme_picker = ctk.CTkOptionMenu(
+            r2,
+            values=list(self.theme_map.keys()),
+            width=140,
+            height=28,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            command=self._on_sound_theme_change
+        )
+        self.theme_picker.set(curr_label)
+        self.theme_picker.pack(side="left", padx=(0, 6))
+
+        test_sound_btn = ctk.CTkButton(
+            r2,
+            text="▶ Test",
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            fg_color=("#f1f5f9", "#334155"),
+            hover_color=("#e2e8f0", "#475569"),
+            text_color=("#2563eb", "#60a5fa"),
+            width=48,
+            height=28,
+            command=self._preview_sound_theme
+        )
+        test_sound_btn.pack(side="left", padx=(0, 18))
+
+        anim_lbl = ctk.CTkLabel(
+            r2,
+            text="Wave Animation:",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            text_color=("#0f172a", "#f8fafc")
+        )
+        anim_lbl.pack(side="left", padx=(0, 6))
+
+        self.anim_map = {
+            "Wave Bars (Live Equalizer)": "wave_bars",
+            "Bouncing Wave Dots": "wave_dots",
+            "Sine Wave (Fluid)": "sine_wave"
+        }
+        self.anim_rev_map = {v: k for k, v in self.anim_map.items()}
+
+        curr_anim = getattr(settings, "indicator_animation", "wave_bars")
+        curr_anim_lbl = self.anim_rev_map.get(curr_anim, "Wave Bars (Live Equalizer)")
+
+        self.anim_picker = ctk.CTkOptionMenu(
+            r2,
+            values=list(self.anim_map.keys()),
+            width=175,
+            height=28,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            command=self._on_animation_change
+        )
+        self.anim_picker.set(curr_anim_lbl)
+        self.anim_picker.pack(side="left")
+
+        # Row 3: Hotkey + Custom Words button
+        r3 = ctk.CTkFrame(inner, fg_color="transparent")
+        r3.pack(fill="x")
 
         hk_lbl = ctk.CTkLabel(
-            r2,
+            r3,
             text="Shortcut:",
             font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
             text_color=("#0f172a", "#f8fafc")
@@ -416,9 +493,9 @@ class DashboardWindow(ctk.CTk):
         hk_lbl.pack(side="left", padx=(0, 6))
 
         self.hk_picker = ctk.CTkOptionMenu(
-            r2,
+            r3,
             values=["ctrl+space", "f8", "alt_r", "ctrl+shift+space"],
-            width=130,
+            width=140,
             height=28,
             font=ctk.CTkFont(family="Segoe UI", size=11),
             command=self._on_hotkey_change
@@ -427,17 +504,31 @@ class DashboardWindow(ctk.CTk):
         self.hk_picker.pack(side="left", padx=(0, 16))
 
         vocab_btn = ctk.CTkButton(
-            r2,
+            r3,
             text="📖 Custom Words...",
             font=ctk.CTkFont(family="Segoe UI", size=11),
             fg_color=("#f1f5f9", "#334155"),
             hover_color=("#e2e8f0", "#475569"),
             text_color=("#0f172a", "#f8fafc"),
             height=28,
-            width=120,
+            width=130,
             command=self._open_vocab_dialog
         )
         vocab_btn.pack(side="right")
+
+    def _on_sound_theme_change(self, choice):
+        theme_key = self.theme_map.get(choice, "pop")
+        settings.update_settings({"sound_theme": theme_key})
+        sound.preview(theme_key)
+
+    def _preview_sound_theme(self):
+        curr_label = self.theme_picker.get()
+        theme_key = self.theme_map.get(curr_label, "pop")
+        sound.preview(theme_key)
+
+    def _on_animation_change(self, choice):
+        anim_key = self.anim_map.get(choice, "wave_bars")
+        settings.update_settings({"indicator_animation": anim_key})
 
     def _is_startup_enabled(self) -> bool:
         sc = Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / "Project Voice.lnk"

@@ -12,5 +12,7 @@
     "llm_model": "qwen/qwen3.8-27b",
     "temperature": 0.0
   },
-  "sound_feedback": true
+  "sound_feedback": true,
+  "sound_theme": "pop",
+  "indicator_animation": "wave_bars"
 }

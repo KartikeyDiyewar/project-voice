@@ -91,6 +91,16 @@ class Settings:
     def sound_feedback(self) -> bool:
         return self.data.get("sound_feedback", True)
 
+    @property
+    def sound_theme(self) -> str:
+        """Sound pack theme: 'pop', 'chime', 'click', 'synth', 'classic'."""
+        return self.data.get("sound_theme", "pop").lower()
+
+    @property
+    def indicator_animation(self) -> str:
+        """Floating indicator animation: 'wave_bars', 'wave_dots', 'sine_wave'."""
+        return self.data.get("indicator_animation", "wave_bars").lower()
+
     def update_api_key(self, api_key: str) -> bool:
         """Saves GROQ_API_KEY to runtime environment and .env file atomically."""
         self.groq_api_key = api_key.strip()
