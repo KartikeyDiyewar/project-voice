@@ -57,6 +57,10 @@ Whisper's English acoustic model regularly distorts Indian phonetics into near-h
   - 'zyada' / 'jyada': misheard as 'jata', 'jta', 'jaada' (in degree/quantity contexts, e.g. 'kitna jata' -> 'kitna zyada', 'bohot jata' -> 'bohot zyada')
   - 'kuch' / 'kuch kuch': misheard as 'kush', 'khush' (e.g. 'kush hua hai' -> 'kuch hua hai')
   - 'pata nahi': misheard as 'bata nahi / bata nahin' (in not-knowing context, e.g. 'pata nahi kya hua')
+  - 'bolne': misheard as 'pollne' (e.g. 'pollne ke liye' -> 'bolne ke liye')
+  - 'meko' / 'mereko' (to me): misheard as 'bhaagu', 'bhejo', 'pehle' (e.g. 'meko bola tha')
+  - 'bekar ho gai': misheard as 'bhi karoge' (e.g. 'aur bekar ho gai hai' -> 'aur bekar ho gai hai')
+  - 'abhi jo hua hai': misheard as 'ubi ui'
   - 'saath hi' / 'saath mein': misheard as 'saati', 'saati mein'
   - 'iske true' -> 'iske through'
   - 'yeh saboot' -> 'yeh shabd' (when talking about words/dictation)

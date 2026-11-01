@@ -7,7 +7,7 @@
   },
   "ai": {
     "stt_provider": "groq",
-    "stt_model": "whisper-large-v3-turbo",
+    "stt_model": "whisper-large-v3",
     "llm_provider": "groq",
     "llm_model": "qwen/qwen3.8-27b",
     "temperature": 0.0

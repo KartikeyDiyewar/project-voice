@@ -39,10 +39,10 @@ class Settings:
                 "audio": {"sample_rate": 16000, "channels": 1},
                 "ai": {
                     "stt_provider": "groq",
-                    "stt_model": "whisper-large-v3-turbo",
+                    "stt_model": "whisper-large-v3",
                     "llm_provider": "groq",
                     "llm_model": "qwen/qwen3.8-27b",
-                    "temperature": 0.1
+                    "temperature": 0.0
                 },
                 "sound_feedback": True
             }
@@ -71,7 +71,7 @@ class Settings:
 
     @property
     def stt_model(self) -> str:
-        return self.data.get("ai", {}).get("stt_model", "whisper-large-v3-turbo")
+        return self.data.get("ai", {}).get("stt_model", "whisper-large-v3")
 
     @property
     def stt_language(self) -> str | None:

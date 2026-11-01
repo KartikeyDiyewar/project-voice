@@ -64,7 +64,7 @@ class GroqSTTProvider:
 
         transcribe_kwargs = {
             "file": ("speech.wav", audio_bytes),
-            "model": self.model,
+            "model": getattr(settings, "stt_model", "whisper-large-v3"),
             "prompt": self._get_primed_prompt(),
             "temperature": 0.0,
             "response_format": "verbose_json"
