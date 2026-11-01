@@ -35,6 +35,10 @@ Project Voice/
 │   ├── llm_cleaner.py       # Context-aware AI copy-editor (Phonetic repair & formatting)
 │   └── injector.py          # Non-destructive clipboard virtual Ctrl+V injection
 │
+├── docs/                    # Architecture diagrams & design specs
+│   └── architecture/
+├── scripts/                 # Utility scripts & research prototypes
+│   └── prototypes/
 ├── ui/
 │   ├── __init__.py
 │   ├── dashboard.py         # Modern sidebar control center & live diagnostics
@@ -47,10 +51,11 @@ Project Voice/
 │   └── sound_feedback.py    # Subtle audio cues (start chime, stop chime, paste chime)
 │
 ├── app.py                   # Master Application Controller & Win32 IPC
+├── build_exe.bat            # 1-Click PyInstaller compilation script
+├── run_app.bat              # Quick developer launcher
 ├── settings.json            # User preferences & hotkey configuration
 ├── dictionary.json          # Custom words & jargon list
-├── build_exe.bat            # 1-Click PyInstaller compilation script
-├── requirements.txt         # Dependencies
+├── requirements.txt         # Production dependencies
 └── .env.example             # Environment template
 ```
 

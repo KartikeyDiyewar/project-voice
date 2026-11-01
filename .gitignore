@@ -8,6 +8,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.log
+.ruff_cache/
+.pytest_cache/
 
 # PyInstaller & Build artifacts
 build/

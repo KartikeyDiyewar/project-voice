@@ -1,6 +1,9 @@
 @echo off
-title Wispr Flow - Voice Dictation Engine
-cd /d "C:\Users\diyew\personal\projects\Project Voice"
-echo Starting Wispr Flow with default hotkey [Ctrl + Space]...
+title Project Voice - Desktop Engine
+cd /d "%~dp0"
+echo ========================================================
+echo Starting Project Voice...
+echo Default Hotkey: [Ctrl + Space]
+echo ========================================================
 python app.py
 pause
