@@ -589,12 +589,22 @@ class DashboardWindow(ctk.CTk):
     # WINDOW ACTIONS
     # -------------------------------------------------------------------------
     def show_window(self):
-        self.deiconify()
-        self.state("normal")
-        self.attributes("-topmost", True)
-        self.lift()
-        self.focus_force()
-        self.after(150, lambda: self.attributes("-topmost", False))
+        try:
+            self.deiconify()
+            self.state("normal")
+            self.attributes("-topmost", True)
+            self.lift()
+            self.focus_force()
+            try:
+                hwnd = ctypes.windll.user32.GetParent(self.winfo_id()) or self.winfo_id()
+                if hwnd:
+                    ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                    ctypes.windll.user32.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
+            self.after(200, lambda: self.attributes("-topmost", False))
+        except Exception:
+            pass
 
     def hide_window(self):
         self.withdraw()

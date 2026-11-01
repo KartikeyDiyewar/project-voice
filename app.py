@@ -33,6 +33,8 @@ user32.GetForegroundWindow.restype = wintypes.HWND
 user32.GetForegroundWindow.argtypes = []
 user32.SetForegroundWindow.restype = wintypes.BOOL
 user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+user32.AllowSetForegroundWindow.restype = wintypes.BOOL
+user32.AllowSetForegroundWindow.argtypes = [wintypes.DWORD]
 user32.GetWindowTextLengthW.restype = ctypes.c_int
 user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
 user32.GetWindowTextW.restype = ctypes.c_int
@@ -59,7 +61,11 @@ EVENT_MODIFY_STATE = 0x0002
 
 _app_mutex = kernel32.CreateMutexW(None, False, "ProjectVoice_SingleInstance_Mutex")
 if kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
-    # Existing instance detected! Signal it to bring its Dashboard window to the front:
+    # Existing instance detected! Grant it foreground window rights & signal wakeup
+    try:
+        user32.AllowSetForegroundWindow(0xFFFFFFFF)  # ASFW_ANY
+    except Exception:
+        pass
     event = kernel32.OpenEventW(EVENT_MODIFY_STATE, False, "ProjectVoice_ShowEvent")
     if event:
         kernel32.SetEvent(event)
