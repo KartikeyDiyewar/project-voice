@@ -1071,10 +1071,19 @@ class DashboardWindow(ctk.CTk):
         self._rebuild_ui()
 
     def _rebuild_ui(self):
-        """Repaints the surface in place so the theme switch is immediate."""
+        """Repaints the shell in place so a theme switch is immediate.
+
+        Only the sidebar and content frames are recreated. Other top-levels
+        parented to this window (the floating pill, dialogs) must survive,
+        otherwise the indicator stops appearing after a theme change.
+        """
         active = self.active_tab
-        for child in self.winfo_children():
-            child.destroy()
+        for child in (getattr(self, "sidebar", None), getattr(self, "content", None)):
+            if child is not None:
+                try:
+                    child.destroy()
+                except Exception:
+                    pass
         self.nav_buttons.clear()
         self.nav_icon_keys.clear()
         self.nav_accent_bars.clear()
