@@ -25,3 +25,6 @@ venv/
 .venv/
 env/
 .env/
+
+# Generated review artifacts
+docs/ui-review.html

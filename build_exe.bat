@@ -5,11 +5,15 @@ echo ========================================================
 echo Building Standalone Windows Executable for Project Voice...
 echo ========================================================
 
+:: Prefer the project virtualenv so dependencies resolve correctly
+set PYTHON=python
+if exist ".venv\Scripts\python.exe" set PYTHON=".venv\Scripts\python.exe"
+
 :: Close any running instance to prevent file locks
 taskkill /F /IM "Project Voice.exe" >nul 2>nul
 timeout /t 1 /nobreak >nul
 
-python -m PyInstaller ^
+%PYTHON% -m PyInstaller ^
     --noconsole ^
     --name="Project Voice" ^
     --icon="assets/icon.ico" ^
