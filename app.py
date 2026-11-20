@@ -261,6 +261,8 @@ class ProjectVoiceApp:
         else:
             # Default desktop double-click: show Dashboard window!
             self.dashboard.show_window()
+            # First launch only: let the user pick a theme before they start.
+            self.dashboard.maybe_ask_appearance()
 
         # Main Tkinter event loop
         try:

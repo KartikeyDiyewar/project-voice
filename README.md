@@ -10,7 +10,7 @@
 - **⚡ Sub-Second Latency (<800ms):** In-memory RAM audio capture paired with Groq LPUs (`whisper-large-v3-turbo` + `qwen/qwen3.8-27b`).
 - **🇮🇳 Native Roman Hinglish & English:** Intelligent phonetic correction eliminates Whisper homophone confusions (`ab sab` vs `aap sab`, `chalne lag gaya`, `sandeh`, `avishwas`) with zero unwanted Devanagari script or translation.
 - **🖥️ Windows 11 Fluent Dashboard:**
-  - Modern obsidian dark-theme control panel with native Per-Monitor DPI scaling and DWM dark titlebar.
+  - Warm-paper / espresso-ink themes with a burnt terracotta accent, switchable from the rail or Settings.
   - **Live Microphone Sensitivity Monitor:** Real-time audio volume visualizer with 3-second diagnostic test.
   - **Interactive Dictation Sandbox ("Try It Live"):** Test speech-to-text directly in the dashboard with live millisecond latency telemetry.
 - **🚀 Single-Instance Win32 IPC:** Double-clicking the desktop shortcut while the app is running smoothly restores and focuses the Dashboard window (zero duplicate instances).
@@ -41,8 +41,10 @@ Project Voice/
 │   └── prototypes/
 ├── ui/
 │   ├── __init__.py
-│   ├── dashboard.py         # Modern sidebar control center & live diagnostics
+│   ├── theme.py             # Design tokens: OKLCH-authored palette, type, spacing, radii
+│   ├── dashboard.py         # Two-tone control surface with light/dark auth
 │   ├── floating_indicator.py# Wispr Flow style glowing pill indicator
+│   ├── icons.py             # Supersampled vector icon renderer (no OS emoji)
 │   └── tray.py              # Windows Taskbar System Tray icon & context menu
 │
 ├── utils/

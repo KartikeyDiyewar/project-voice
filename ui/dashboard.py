@@ -1,28 +1,22 @@
 """
-Project Voice - Windows 11 Modern Desktop Control Center
-Faithfully aligned with the official Project Voice Desktop Interface design:
-- Left Sidebar with brand logo, sleek navigation pills, connection status & version
-- Windows 11 Light Fluent theme with clean white cards and rounded geometry
-- DWM Windows 11 integration (seamless caption bar, hardware rounded corners)
-- Razor-sharp monochrome vector icons (zero OS emoji font inconsistencies)
-- Hero Dark Card with white key shortcut pills and audio wave graphics
-- Sound & Animation Card with segmented pill selectors
-- Options Card with Start with Windows and Play Chime Sound modern switches
-- Quick Action buttons: 'Test Voice Typing' and 'Custom Words'
-- Multi-page navigation: Home, Voice Typing, Shortcuts, Settings, About
-- Per-Monitor DPI Awareness & Single-Instance IPC integration
+Project Voice - Desktop Control Surface
+
+Visual language: warm paper / espresso ink with a burnt terracotta accent.
+Composition follows the operator's job rather than a card grid - one masthead,
+a status ledger, a single active "listening" band, and a settings list divided
+by hairlines. Nothing is nested inside a card that does not need to be.
 """
 
 import ctypes
 import json
+import math
 import os
 import subprocess
 import threading
-import time
+import tkinter as tk
 import webbrowser
 from pathlib import Path
 
-# Enable Per-Monitor DPI Awareness before Tkinter initializes
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(2)
 except Exception:
@@ -33,13 +27,96 @@ except Exception:
 
 import customtkinter as ctk
 from groq import Groq
+
 from config.settings import settings
 from utils.sound_feedback import sound
 from ui.icons import get_icon
+from ui import theme
 
-# Appearance setup
-ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
+ctk.set_appearance_mode(theme.mode())
+
+VERSION = "1.3.0"
+WIN_W, WIN_H = 1060, 784
+MIN_W, MIN_H = 900, 620
+RAIL_W = 220
+
+DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+DWMWA_CAPTION_COLOR = 35
+DWMWA_TEXT_COLOR = 36
+DWMWA_BORDER_COLOR = 34
+DWMWA_WINDOW_CORNER_PREFERENCE = 33
+
+LIGHT_PREVIEW = dict(theme.LIGHT)
+DARK_PREVIEW = dict(theme.DARK)
+
+
+def _hex_to_colorref(hex_color: str) -> int:
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return (b << 16) | (g << 8) | r
+
+
+class ToggleSwitch(tk.Canvas):
+    """A switch with an inset knob, so the track and both states stay legible.
+
+    CTkSwitch draws a knob as tall as the track, which collapses into a white
+    blob at small sizes. This draws an explicit track plus a knob inset by 3px.
+    """
+
+    TRACK_W, TRACK_H, INSET = 46, 26, 3
+
+    def __init__(self, master, value=False, command=None, bg=None,
+                 track_off=None, track_on=None, knob=None, disabled_track=None):
+        bg = bg or theme.t("canvas")
+        super().__init__(master, width=self.TRACK_W, height=self.TRACK_H,
+                         bg=bg, highlightthickness=0, bd=0, cursor="hand2")
+        self.command = command
+        self.value = bool(value)
+        self.colors = {
+            "off": track_off or theme.t("switch_off"),
+            "on": track_on or theme.t("accent"),
+            "knob": knob or theme.t("switch_knob"),
+        }
+        self.bind("<Button-1>", lambda _e: self.toggle())
+        self.bind("<Enter>", lambda _e: self._draw(hover=True))
+        self.bind("<Leave>", lambda _e: self._draw(hover=False))
+        self._draw()
+
+    def _draw(self, hover=False):
+        self.delete("all")
+        on = self.value
+        track = self.colors["on"] if on else self.colors["off"]
+        r = self.TRACK_H / 2
+        self.create_oval(0, 0, self.TRACK_H, self.TRACK_H, fill=track, outline="")
+        self.create_oval(self.TRACK_W - self.TRACK_H, 0, self.TRACK_W, self.TRACK_H,
+                         fill=track, outline="")
+        self.create_rectangle(r, 0, self.TRACK_W - r, self.TRACK_H, fill=track, outline="")
+
+        knob_d = self.TRACK_H - self.INSET * 2
+        y0, y1 = self.INSET, self.INSET + knob_d
+        x0 = self.TRACK_W - self.INSET - knob_d if on else self.INSET
+        self.create_oval(x0, y0, x0 + knob_d, y1,
+                         fill=self.colors["knob"], outline="")
+
+    def toggle(self):
+        self.value = not self.value
+        self._draw()
+        if self.command:
+            self.command()
+
+    def get(self) -> int:
+        return 1 if self.value else 0
+
+    def select(self):
+        if not self.value:
+            self.value = True
+            self._draw()
+
+    def deselect(self):
+        if self.value:
+            self.value = False
+            self._draw()
 
 
 class DashboardWindow(ctk.CTk):
@@ -49,20 +126,12 @@ class DashboardWindow(ctk.CTk):
         self.on_reinit_services = on_reinit_services
         self.on_quit = on_quit
 
-        # Window properties
         self.title("Project Voice")
-        self.geometry("960x600")
-        self.resizable(False, False)
+        self.resizable(True, True)
+        self.minsize(MIN_W, MIN_H)
+        self.configure(fg_color=theme.t("canvas"))
+        self.geometry(f"{WIN_W}x{WIN_H}")
 
-        # Center on screen
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
-        x = max(40, (screen_w - 960) // 2)
-        y = max(40, (screen_h - 600) // 2)
-        self.geometry(f"960x600+{x}+{y}")
-        self.configure(fg_color="#f3f4f6")
-
-        # Set taskbar icon if exists
         icon_path = settings.base_dir / "assets" / "icon.ico"
         if icon_path.exists():
             try:
@@ -70,229 +139,224 @@ class DashboardWindow(ctk.CTk):
             except Exception:
                 pass
 
-        # Intercept close button (X) to minimize to tray
         self.protocol("WM_DELETE_WINDOW", self.hide_window)
 
-        # Track active navigation tab
         self.active_tab = "Home"
         self.nav_buttons = {}
         self.nav_icon_keys = {}
+        self.nav_accent_bars = {}
         self.pages = {}
 
-        # Pill options definitions
         self.chime_options = [
             ("Pop", "pop"),
             ("Click", "click"),
             ("Soft", "synth"),
             ("Bell", "chime"),
-            ("None", "none")
+            ("None", "none"),
         ]
         self.anim_options = [
             ("Off", "off"),
             ("Bars", "wave_bars"),
-            ("Circle", "wave_dots"),
-            ("Ribbon", "sine_wave")
+            ("Dots", "wave_dots"),
+            ("Line", "sine_wave"),
         ]
 
-        self._build_layout()
+        self._build_shell()
 
-        # Apply Windows 11 DWM Seamless Caption & Rounded Corners
         self.update_idletasks()
-        self._apply_windows11_dwm()
+        self._fit_to_work_area()
+        self._apply_native_chrome()
 
-    # -------------------------------------------------------------------------
-    # DWM WINDOWS 11 INTEGRATION
-    # -------------------------------------------------------------------------
-    def _apply_windows11_dwm(self):
-        """Blends the titlebar into #f3f4f6 and activates native Win11 rounded corners."""
+    def _fit_to_work_area(self):
+        """Sizes the window to the monitor work area so nothing is ever clipped.
+
+        CTk multiplies requested geometry by the window scaling factor, so the
+        physical work area is converted back into logical units first.
+        """
         try:
-            hwnd = ctypes.windll.user32.GetParent(self.winfo_id()) or self.winfo_id()
-            if hwnd:
-                dwm = ctypes.windll.dwmapi
-                # DWMWA_CAPTION_COLOR = 35 -> #f3f4f6 (COLORREF = 0x00F6F4F3)
-                caption_color = ctypes.c_int(0x00F6F4F3)
-                dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(caption_color), ctypes.sizeof(caption_color))
-
-                # DWMWA_TEXT_COLOR = 36 -> #0f172a (COLORREF = 0x002A170F)
-                text_color = ctypes.c_int(0x002A170F)
-                dwm.DwmSetWindowAttribute(hwnd, 36, ctypes.byref(text_color), ctypes.sizeof(text_color))
-
-                # DWMWA_WINDOW_CORNER_PREFERENCE = 33 -> DWMWCP_ROUND = 2
-                corner_pref = ctypes.c_int(2)
-                dwm.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(corner_pref), ctypes.sizeof(corner_pref))
-
-                # DWMWA_BORDER_COLOR = 34 -> #e5e7eb (COLORREF = 0x00EBE7E5)
-                border_color = ctypes.c_int(0x00EBE7E5)
-                dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(border_color), ctypes.sizeof(border_color))
+            work = ctypes.wintypes.RECT()
+            ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(work), 0)
+            avail_w = work.right - work.left
+            avail_h = work.bottom - work.top
+            if avail_w <= 0 or avail_h <= 0:
+                return
+            scale = self._get_window_scaling()
+            avail_w = int(avail_w / scale)
+            avail_h = int(avail_h / scale)
+            width = min(WIN_W, avail_w - 24)
+            height = min(WIN_H, avail_h - 24)
+            x = work.left + (avail_w - width) // 2
+            y = work.top + (avail_h - height) // 2
+            self.geometry(f"{width}x{height}+{x}+{y}")
+            self.minsize(min(MIN_W, width), min(MIN_H, height))
         except Exception:
             pass
 
     # -------------------------------------------------------------------------
-    # MAIN LAYOUT: SIDEBAR + CONTENT AREA
+    # NATIVE WINDOW CHROME
     # -------------------------------------------------------------------------
-    def _build_layout(self):
-        # 1. Left Sidebar
-        self.sidebar = ctk.CTkFrame(
-            self,
-            width=210,
-            corner_radius=0,
-            fg_color="#f8fafc",
-            border_width=1,
-            border_color="#e5e7eb"
-        )
+    def _apply_native_chrome(self):
+        """Ties the caption bar and border into the current palette."""
+        try:
+            hwnd = ctypes.windll.user32.GetParent(self.winfo_id()) or self.winfo_id()
+            if not hwnd:
+                return
+            dwm = ctypes.windll.dwmapi
+            dark = 1 if theme.mode() == "dark" else 0
+            use_dark = ctypes.c_int(dark)
+            dwm.DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                                      ctypes.byref(use_dark), ctypes.sizeof(use_dark))
+            for attr, key in ((DWMWA_CAPTION_COLOR, "canvas"),
+                              (DWMWA_BORDER_COLOR, "border")):
+                val = ctypes.c_int(_hex_to_colorref(theme.t(key)))
+                dwm.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(val), ctypes.sizeof(val))
+            text = ctypes.c_int(_hex_to_colorref(theme.t("text")))
+            dwm.DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, ctypes.byref(text), ctypes.sizeof(text))
+            corner = ctypes.c_int(2)
+            dwm.DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE,
+                                      ctypes.byref(corner), ctypes.sizeof(corner))
+        except Exception:
+            pass
+
+    # -------------------------------------------------------------------------
+    # SHELL
+    # -------------------------------------------------------------------------
+    def _build_shell(self):
+        self.sidebar = ctk.CTkFrame(self, width=RAIL_W, corner_radius=0,
+                                    fg_color=theme.t("sidebar"))
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
 
-        self._build_sidebar_content()
+        self._build_rail()
 
-        # 2. Main Content Container (Right)
-        self.content_container = ctk.CTkFrame(self, fg_color="#f3f4f6", corner_radius=0)
-        self.content_container.pack(side="right", fill="both", expand=True)
+        self.content = ctk.CTkScrollableFrame(
+            self, corner_radius=0, fg_color=theme.t("canvas"),
+            scrollbar_button_color=theme.t("border_strong"),
+            scrollbar_button_hover_color=theme.t("text_subtle"),
+        )
+        self.content.pack(side="right", fill="both", expand=True)
+        self.content._scrollbar.configure(width=6)
 
-        # Initialize pages
         self._init_pages()
-
-        # Show default view: Home
         self._switch_page("Home")
 
     # -------------------------------------------------------------------------
-    # SIDEBAR: LOGO, NAV BUTTONS, FOOTER
+    # LEFT RAIL
     # -------------------------------------------------------------------------
-    def _build_sidebar_content(self):
-        # Top Logo Row
-        logo_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        logo_frame.pack(fill="x", padx=18, pady=(24, 28))
+    def _build_rail(self):
+        wordmark_row = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        wordmark_row.pack(fill="x", padx=20, pady=(26, 30))
 
-        # Dark rounded square with crisp vector mic
-        icon_canvas = ctk.CTkCanvas(
-            logo_frame,
-            width=36,
-            height=36,
-            bg="#f8fafc",
-            highlightthickness=0,
-            bd=0
-        )
-        icon_canvas.pack(side="left", padx=(0, 10))
+        mark = ctk.CTkCanvas(wordmark_row, width=30, height=30,
+                             bg=theme.t("sidebar"), highlightthickness=0, bd=0)
+        mark.pack(side="left", padx=(0, 11))
+        self._draw_brand_mark(mark)
 
-        # Draw rounded dark square
-        self._draw_round_rect(icon_canvas, 1, 1, 35, 35, radius=9, fill="#1e2227")
-        # Draw white microphone symbol
-        icon_canvas.create_oval(14, 8, 22, 18, fill="#ffffff", outline="")
-        icon_canvas.create_rectangle(14, 12, 22, 20, fill="#ffffff", outline="")
-        icon_canvas.create_arc(11, 12, 25, 23, start=180, extent=180, style="arc", outline="#ffffff", width=2)
-        icon_canvas.create_line(18, 23, 18, 27, fill="#ffffff", width=2)
-        icon_canvas.create_line(14, 27, 22, 27, fill="#ffffff", width=2)
+        word = ctk.CTkFrame(wordmark_row, fg_color="transparent")
+        word.pack(side="left", anchor="center")
 
-        logo_title = ctk.CTkLabel(
-            logo_frame,
-            text="Project Voice",
-            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
-            text_color="#0f172a"
-        )
-        logo_title.pack(side="left")
+        ctk.CTkLabel(word, text="PROJECT", font=theme.font(12, "bold"),
+                     text_color=theme.t("text_subtle")).pack(anchor="w")
+        ctk.CTkLabel(word, text="Voice", font=theme.font(19, "bold"),
+                     text_color=theme.t("text")).pack(anchor="w")
 
-        # Navigation Items with Monochrome Vector Icons
+        nav = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        nav.pack(fill="x", padx=14)
+
         nav_items = [
             ("Home", "home"),
             ("Voice Typing", "voice"),
             ("Shortcuts", "shortcuts"),
             ("Settings", "settings"),
-            ("About", "about")
+            ("About", "about"),
         ]
-
-        nav_box = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        nav_box.pack(fill="x", padx=14, pady=0)
-
         for name, icon_key in nav_items:
-            img = get_icon(icon_key, color="#4b5563", size=(18, 18))
-            btn = ctk.CTkButton(
-                nav_box,
-                text=f"  {name}",
-                image=img,
-                compound="left",
-                anchor="w",
-                font=ctk.CTkFont(family="Segoe UI", size=13, weight="normal"),
-                height=38,
-                corner_radius=8,
-                fg_color="transparent",
-                text_color="#4b5563",
-                hover_color="#e2e8f0",
-                command=lambda n=name: self._switch_page(n)
-            )
-            btn.pack(fill="x", pady=4)
-            self.nav_buttons[name] = btn
-            self.nav_icon_keys[name] = icon_key
+            self._make_nav_row(nav, name, icon_key)
 
-        # Spacer pushing footer to bottom
-        spacer = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        spacer.pack(fill="both", expand=True)
+        ctk.CTkFrame(self.sidebar, fg_color="transparent").pack(fill="both", expand=True)
 
-        # Bottom Footer: Connection Status & Version
-        footer_box = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        footer_box.pack(fill="x", padx=20, pady=(0, 24), anchor="s")
+        footer = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        footer.pack(fill="x", padx=20, pady=(0, 24))
 
-        status_row = ctk.CTkFrame(footer_box, fg_color="transparent")
-        status_row.pack(anchor="w")
+        ctk.CTkFrame(footer, height=1, fg_color=theme.t("border")).pack(fill="x", pady=(0, 14))
 
-        dot_lbl = ctk.CTkLabel(
-            status_row,
-            text="●",
-            font=ctk.CTkFont(family="Segoe UI", size=13),
-            text_color="#10b981"
-        )
-        dot_lbl.pack(side="left", padx=(0, 6))
+        state_row = ctk.CTkFrame(footer, fg_color="transparent")
+        state_row.pack(fill="x", pady=(0, 12))
+        self.status_dot = ctk.CTkLabel(state_row, text="●", width=12,
+                                       font=theme.font(12), text_color=theme.t("success"))
+        self.status_dot.pack(side="left", padx=(0, 7))
+        self.status_text = ctk.CTkLabel(
+            state_row, text=self._connection_label(),
+            font=theme.font(11, "bold"), text_color=theme.t("text_muted"))
+        self.status_text.pack(side="left")
 
-        conn_lbl = ctk.CTkLabel(
-            status_row,
-            text="Connected",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            text_color="#1e293b"
-        )
-        conn_lbl.pack(side="left")
+        theme_row = ctk.CTkFrame(footer, fg_color="transparent")
+        theme_row.pack(fill="x")
+        self.theme_switch = self._switch(
+            theme_row, theme.mode() == "dark", self._toggle_appearance,
+            bg=theme.t("sidebar"))
+        self.theme_switch.pack(side="left", padx=(0, 9))
+        ctk.CTkLabel(theme_row, text="Dark", font=theme.font(11),
+                     text_color=theme.t("text_muted")).pack(side="left", pady=(1, 0))
 
-        ver_lbl = ctk.CTkLabel(
-            footer_box,
-            text="v1.2.0",
-            font=ctk.CTkFont(family="Segoe UI", size=11),
-            text_color="#94a3b8"
-        )
-        ver_lbl.pack(anchor="w", padx=(16, 0), pady=(1, 0))
+        ctk.CTkLabel(footer, text=f"v{VERSION}", font=theme.font(10),
+                     text_color=theme.t("text_subtle")).pack(anchor="w", pady=(10, 0))
 
-    def _draw_round_rect(self, canvas, x1, y1, x2, y2, radius=8, **kwargs):
-        """Helper to draw smooth rounded rectangles on standard Tkinter canvas."""
-        points = [
-            x1 + radius, y1,
-            x2 - radius, y1,
-            x2, y1,
-            x2, y1 + radius,
-            x2, y2 - radius,
-            x2, y2,
-            x2 - radius, y2,
-            x1 + radius, y2,
-            x1, y2,
-            x1, y2 - radius,
-            x1, y1 + radius,
-            x1, y1
-        ]
-        return canvas.create_polygon(points, smooth=True, **kwargs)
+    def _draw_brand_mark(self, canvas):
+        """Crisp mic glyph on a filled accent tile."""
+        canvas.create_polygon(
+            [7, 0, 23, 0, 30, 7, 30, 23, 23, 30, 7, 30, 0, 23, 0, 7],
+            smooth=False, fill=theme.t("accent"), outline="")
+        canvas.create_oval(11, 7, 19, 18, fill=theme.t("surface"), outline="")
+        canvas.create_rectangle(11, 13, 19, 19, fill=theme.t("surface"), outline="")
+        canvas.create_arc(8, 13, 22, 24, start=180, extent=180,
+                          style="arc", outline=theme.t("surface"), width=2)
+        canvas.create_line(15, 24, 15, 27, fill=theme.t("surface"), width=2)
+        canvas.create_line(11, 27, 19, 27, fill=theme.t("surface"), width=2)
+
+    def _make_nav_row(self, parent, name, icon_key):
+        row = ctk.CTkFrame(parent, fg_color="transparent", height=38)
+        row.pack(fill="x", pady=1)
+
+        bar = ctk.CTkFrame(row, width=2, height=18, corner_radius=1,
+                           fg_color="transparent")
+        bar.pack(side="left", padx=(0, 12))
+
+        img = get_icon(icon_key, color=theme.t("text_muted"), size=(17, 17))
+        label = ctk.CTkLabel(row, text=name, image=img, compound="left",
+                             font=theme.font(13), text_color=theme.t("text_muted"),
+                             anchor="w", cursor="hand2")
+        label.pack(side="left", fill="x", expand=True)
+
+        for widget in (row, label):
+            widget.bind("<Button-1>", lambda _e, n=name: self._switch_page(n))
+            widget.bind("<Enter>", lambda _e, r=row, n=name: self._hover_nav(n, True))
+            widget.bind("<Leave>", lambda _e, r=row, n=name: self._hover_nav(n, False))
+
+        self.nav_buttons[name] = label
+        self.nav_icon_keys[name] = icon_key
+        self.nav_accent_bars[name] = bar
+
+    def _hover_nav(self, name, entering):
+        if name == self.active_tab:
+            return
+        self.nav_buttons[name].configure(
+            text_color=theme.t("text") if entering else theme.t("text_muted"))
+
+    def _connection_label(self) -> str:
+        return "Connected" if settings.groq_api_key else "No API key"
 
     # -------------------------------------------------------------------------
-    # PAGE INITIALIZATION & SWITCHING
+    # PAGES
     # -------------------------------------------------------------------------
     def _init_pages(self):
-        self.page_home = ctk.CTkFrame(self.content_container, fg_color="transparent")
-        self.page_voice = ctk.CTkFrame(self.content_container, fg_color="transparent")
-        self.page_shortcuts = ctk.CTkFrame(self.content_container, fg_color="transparent")
-        self.page_settings = ctk.CTkFrame(self.content_container, fg_color="transparent")
-        self.page_about = ctk.CTkFrame(self.content_container, fg_color="transparent")
-
-        self.pages = {
-            "Home": self.page_home,
-            "Voice Typing": self.page_voice,
-            "Shortcuts": self.page_shortcuts,
-            "Settings": self.page_settings,
-            "About": self.page_about
-        }
+        self.pages = {name: ctk.CTkFrame(self.content, fg_color="transparent")
+                      for name in ("Home", "Voice Typing", "Shortcuts", "Settings", "About")}
+        self.page_home = self.pages["Home"]
+        self.page_voice = self.pages["Voice Typing"]
+        self.page_shortcuts = self.pages["Shortcuts"]
+        self.page_settings = self.pages["Settings"]
+        self.page_about = self.pages["About"]
 
         self._build_home_page()
         self._build_voice_typing_page()
@@ -303,1084 +367,825 @@ class DashboardWindow(ctk.CTk):
     def _switch_page(self, page_name: str):
         self.active_tab = page_name
 
-        # Update sidebar button appearances & icon tint dynamically
-        for name, btn in self.nav_buttons.items():
-            icon_key = self.nav_icon_keys.get(name, "home")
+        for name, label in self.nav_buttons.items():
+            bar = self.nav_accent_bars[name]
+            icon_key = self.nav_icon_keys[name]
             if name == page_name:
-                btn.configure(
-                    image=get_icon(icon_key, color="#ffffff", size=(18, 18)),
-                    fg_color="#2b3038",
-                    text_color="#ffffff",
-                    hover_color="#1f2328",
-                    font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold")
-                )
+                bar.configure(fg_color=theme.t("accent"))
+                label.configure(text_color=theme.t("text"),
+                                font=theme.font(13, "bold"),
+                                image=get_icon(icon_key, color=theme.t("accent"), size=(17, 17)))
             else:
-                btn.configure(
-                    image=get_icon(icon_key, color="#4b5563", size=(18, 18)),
-                    fg_color="transparent",
-                    text_color="#4b5563",
-                    hover_color="#e2e8f0",
-                    font=ctk.CTkFont(family="Segoe UI", size=13, weight="normal")
-                )
+                bar.configure(fg_color="transparent")
+                label.configure(text_color=theme.t("text_muted"),
+                                font=theme.font(13),
+                                image=get_icon(icon_key, color=theme.t("text_muted"), size=(17, 17)))
 
-        # Switch visible frame
         for name, frame in self.pages.items():
             if name == page_name:
-                frame.pack(fill="both", expand=True, padx=28, pady=20)
+                frame.pack(fill="both", expand=True, padx=(40, 36), pady=(30, 28))
             else:
                 frame.pack_forget()
 
     # -------------------------------------------------------------------------
-    # 1. HOME PAGE (MATCHES TARGET REFERENCE INTERFACE)
+    # SHARED BUILDING BLOCKS
+    # -------------------------------------------------------------------------
+    def _masthead(self, parent, title, subtitle, top_pad=(0, 0)):
+        box = ctk.CTkFrame(parent, fg_color="transparent")
+        box.pack(fill="x", pady=top_pad)
+        ctk.CTkLabel(box, text=title, font=theme.font(30, "bold"),
+                     text_color=theme.t("text")).pack(anchor="w")
+        ctk.CTkLabel(box, text=subtitle, font=theme.font(13),
+                     text_color=theme.t("text_muted")).pack(anchor="w", pady=(2, 0))
+        return box
+
+    def _section_label(self, parent, text, top=22, bottom=10):
+        ctk.CTkLabel(parent, text=text.upper(), font=theme.font(11, "bold"),
+                     text_color=theme.t("text_subtle")).pack(anchor="w", pady=(top, bottom))
+
+    def _hairline(self, parent, pady=(0, 0)):
+        ctk.CTkFrame(parent, height=1, fg_color=theme.t("border")).pack(fill="x", pady=pady)
+
+    def _switch(self, parent, on: bool, command, bg=None):
+        sw = ToggleSwitch(parent, value=on, command=command,
+                          bg=bg or theme.t("canvas"))
+        if on:
+            sw.select()
+        return sw
+
+    def _pill_group(self, parent, options, active_value, on_change, side="left"):
+        """Mutually exclusive pills; the selected one is the only filled chip."""
+        container = ctk.CTkFrame(parent, fg_color="transparent")
+        if side == "top":
+            container.pack(anchor="w")
+        else:
+            container.pack(side=side)
+        buttons = {}
+        for label, value in options:
+            btn = ctk.CTkButton(
+                container, text=label, font=theme.font(11), height=30, width=0,
+                corner_radius=theme.RADIUS["pill"], border_width=1,
+                command=lambda v=value: on_change(v))
+            btn.pack(side="left", padx=(0, 6))
+            buttons[value] = btn
+        group = {"buttons": buttons, "active": active_value}
+        self._paint_pill_group(group)
+        return group
+
+    def _paint_pill_group(self, group):
+        for value, btn in group["buttons"].items():
+            if value == group["active"]:
+                btn.configure(fg_color=theme.t("accent"), hover_color=theme.t("accent_hover"),
+                              border_color=theme.t("accent"),
+                              text_color="#FFFFFF", font=theme.font(11, "bold"))
+            else:
+                btn.configure(fg_color=theme.t("surface"), hover_color=theme.t("surface_sunk"),
+                              border_color=theme.t("border_strong"),
+                              text_color=theme.t("text_muted"), font=theme.font(11))
+
+    def _set_pill_group(self, group, value):
+        group["active"] = value
+        self._paint_pill_group(group)
+
+    # -------------------------------------------------------------------------
+    # HOME
     # -------------------------------------------------------------------------
     def _build_home_page(self):
-        # Header Row
-        header_row = ctk.CTkFrame(self.page_home, fg_color="transparent")
-        header_row.pack(fill="x", pady=(0, 14))
+        page = self.page_home
 
-        title_box = ctk.CTkFrame(header_row, fg_color="transparent")
+        head = ctk.CTkFrame(page, fg_color="transparent")
+        head.pack(fill="x", pady=(0, 20))
+
+        title_box = ctk.CTkFrame(head, fg_color="transparent")
         title_box.pack(side="left")
+        ctk.CTkLabel(title_box, text="Project Voice", font=theme.font(27, "bold"),
+                     text_color=theme.t("text")).pack(anchor="w")
+        ctk.CTkLabel(title_box, text="Push-to-talk dictation for Windows",
+                     font=theme.font(13), text_color=theme.t("text_muted")).pack(anchor="w", pady=(2, 0))
 
-        h_title = ctk.CTkLabel(
-            title_box,
-            text="Project Voice",
-            font=ctk.CTkFont(family="Segoe UI", size=24, weight="bold"),
-            text_color="#0f172a"
-        )
-        h_title.pack(anchor="w")
-
-        h_sub = ctk.CTkLabel(
-            title_box,
-            text="Voice typing for Windows",
-            font=ctk.CTkFont(family="Segoe UI", size=13),
-            text_color="#64748b"
-        )
-        h_sub.pack(anchor="w", pady=(1, 0))
-
-        # Status Badge on top-right
         has_key = bool(settings.groq_api_key)
+        badge = ctk.CTkFrame(head, fg_color=theme.t("success_soft") if has_key else theme.t("warning_soft"),
+                             corner_radius=theme.RADIUS["pill"])
+        badge.pack(side="right", anchor="center")
         self.home_status_badge = ctk.CTkLabel(
-            header_row,
-            text="✔  Ready to Use" if has_key else "⚠️  Setup Required",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            text_color="#15803d" if has_key else "#b45309",
-            fg_color="#dcfce7" if has_key else "#fef3c7",
-            corner_radius=14,
-            padx=14,
-            pady=5
-        )
-        self.home_status_badge.pack(side="right", anchor="center")
+            badge, text="Ready" if has_key else "Setup required",
+            font=theme.font(11, "bold"),
+            text_color=theme.t("success") if has_key else theme.t("warning"))
+        self.home_status_badge.pack(padx=13, pady=5)
 
-        # ---------------- HERO DARK CARD ----------------
-        self.hero_card = ctk.CTkFrame(
-            self.page_home,
-            fg_color="#24282f",
-            corner_radius=16,
-            height=130
-        )
-        self.hero_card.pack(fill="x", pady=(0, 14))
-        self.hero_card.pack_propagate(False)
+        # ---- status ledger: inline metrics, no card boxes -------------------
+        ledger = ctk.CTkFrame(page, fg_color="transparent")
+        ledger.pack(fill="x", pady=(0, 20))
+        self._ledger_cell(ledger, "Shortcut", settings.hotkey.replace("+", " + ").upper())
+        self._ledger_cell(ledger, "Speech model", settings.stt_model)
+        self._ledger_cell(ledger, "Language", "Hinglish · English")
+        self._ledger_cell(ledger, "Last dictation", "—", last=True, name="latency")
 
-        hero_inner = ctk.CTkFrame(self.hero_card, fg_color="transparent")
-        hero_inner.pack(fill="both", expand=True, padx=26, pady=16)
+        # ---- listening band ------------------------------------------------
+        band = ctk.CTkFrame(page, fg_color=theme.t("ink"), corner_radius=theme.RADIUS["card"])
+        band.pack(fill="x", pady=(0, 20))
 
-        # Left side: Key shortcuts & subtitle
-        hero_left = ctk.CTkFrame(hero_inner, fg_color="transparent")
-        hero_left.pack(side="left", anchor="center")
+        band_inner = ctk.CTkFrame(band, fg_color="transparent")
+        band_inner.pack(fill="x", padx=24, pady=18)
 
-        keys_row = ctk.CTkFrame(hero_left, fg_color="transparent")
-        keys_row.pack(anchor="w")
+        left = ctk.CTkFrame(band_inner, fg_color="transparent")
+        left.pack(side="left", anchor="center")
 
-        curr_hotkey = settings.hotkey.lower()
-        if "ctrl" in curr_hotkey and "space" in curr_hotkey:
-            k1_text, k2_text = "Ctrl", "Space"
-        elif "+" in curr_hotkey:
-            parts = curr_hotkey.split("+")
-            k1_text = parts[0].capitalize()
-            k2_text = parts[-1].capitalize()
-        else:
-            k1_text = curr_hotkey.upper()
-            k2_text = ""
+        ctk.CTkLabel(left, text="HOLD TO DICTATE", font=theme.font(10, "bold"),
+                     text_color=theme.t("on_ink_muted")).pack(anchor="w", pady=(0, 9))
 
-        self.k1_lbl = ctk.CTkLabel(
-            keys_row,
-            text=k1_text,
-            font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
-            text_color="#111827",
-            fg_color="#ffffff",
-            corner_radius=8,
-            padx=14,
-            pady=6
-        )
-        self.k1_lbl.pack(side="left")
+        keys = ctk.CTkFrame(left, fg_color="transparent")
+        keys.pack(anchor="w")
+        k1, k2 = self._key_labels()
+        self.k1_cap = self._keycap(keys, k1)
+        self.k2_cap = None
+        if k2:
+            ctk.CTkLabel(keys, text="+", font=theme.font(12, "bold"),
+                         text_color=theme.t("on_ink_muted")).pack(side="left", padx=7)
+            self.k2_cap = self._keycap(keys, k2)
 
-        if k2_text:
-            plus_lbl = ctk.CTkLabel(
-                keys_row,
-                text="+",
-                font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
-                text_color="#ffffff"
-            )
-            plus_lbl.pack(side="left", padx=8)
+        ctk.CTkLabel(left, text="Speak naturally, release to paste",
+                     font=theme.font(11), text_color=theme.t("on_ink_muted")).pack(anchor="w", pady=(10, 0))
 
-            self.k2_lbl = ctk.CTkLabel(
-                keys_row,
-                text=k2_text,
-                font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
-                text_color="#111827",
-                fg_color="#ffffff",
-                corner_radius=8,
-                padx=16,
-                pady=6
-            )
-            self.k2_lbl.pack(side="left")
-        else:
-            self.k2_lbl = None
-
-        hero_sub = ctk.CTkLabel(
-            hero_left,
-            text="Press to start voice typing",
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            text_color="#e2e8f0"
-        )
-        hero_sub.pack(anchor="w", pady=(8, 0))
-
-        # Right side: Audio wave graphic
-        hero_right = ctk.CTkFrame(hero_inner, fg_color="transparent")
-        hero_right.pack(side="right", fill="y", anchor="center")
-
-        self.wave_canvas = ctk.CTkCanvas(
-            hero_right,
-            width=280,
-            height=90,
-            bg="#24282f",
-            highlightthickness=0,
-            bd=0
-        )
+        right = ctk.CTkFrame(band_inner, fg_color="transparent")
+        right.pack(side="right", fill="y")
+        self.wave_canvas = ctk.CTkCanvas(right, width=290, height=70, bg=theme.t("ink"),
+                                         highlightthickness=0, bd=0)
         self.wave_canvas.pack(side="right", anchor="center")
-        self._render_hero_waveform()
+        self._render_waveform()
 
-        # ---------------- CARD 1: SOUND & ANIMATION ----------------
-        c1 = ctk.CTkFrame(
-            self.page_home,
-            fg_color="#ffffff",
-            corner_radius=12,
-            border_width=1,
-            border_color="#e5e7eb"
-        )
-        c1.pack(fill="x", pady=(0, 12))
+        # ---- sound, motion and behavior in two columns ----------------------
+        columns = ctk.CTkFrame(page, fg_color="transparent")
+        columns.pack(fill="x", pady=(0, 4))
+        columns.grid_columnconfigure(0, weight=1, uniform="col")
+        columns.grid_columnconfigure(1, weight=1, uniform="col")
 
-        c1_title = ctk.CTkLabel(
-            c1,
-            text="Sound & Animation",
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            text_color="#0f172a"
-        )
-        c1_title.pack(anchor="w", padx=20, pady=(12, 8))
+        left_col = ctk.CTkFrame(columns, fg_color="transparent")
+        left_col.grid(row=0, column=0, sticky="new", padx=(0, 22))
 
-        c1_content = ctk.CTkFrame(c1, fg_color="transparent")
-        c1_content.pack(fill="x", padx=20, pady=(0, 14))
+        right_col = ctk.CTkFrame(columns, fg_color="transparent")
+        right_col.grid(row=0, column=1, sticky="new")
 
-        # Column Left: Chime Sound with Vector Bell Icon
-        c1_left = ctk.CTkFrame(c1_content, fg_color="transparent")
-        c1_left.pack(side="left", fill="x", expand=True)
+        self._section_label(left_col, "Feedback", top=0)
+        self._hairline(left_col, pady=(0, 14))
 
-        chime_label_row = ctk.CTkFrame(c1_left, fg_color="transparent")
-        chime_label_row.pack(side="left", padx=(0, 12))
+        ctk.CTkLabel(left_col, text="Chime", font=theme.font(13),
+                     text_color=theme.t("text")).pack(anchor="w", pady=(0, 7))
+        current_chime = "none" if not settings.sound_feedback else settings.sound_theme
+        self.chime_group = self._pill_group(
+            left_col, self.chime_options, current_chime, self._on_chime_selected, side="top")
 
-        chime_lbl = ctk.CTkLabel(
-            chime_label_row,
-            text="  Chime Sound",
-            image=get_icon("bell", color="#1e293b", size=(16, 16)),
-            compound="left",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            text_color="#1e293b"
-        )
-        chime_lbl.pack(side="left")
+        ctk.CTkLabel(left_col, text="Indicator motion", font=theme.font(13),
+                     text_color=theme.t("text")).pack(anchor="w", pady=(18, 7))
+        self.anim_group = self._pill_group(
+            left_col, self.anim_options, settings.indicator_animation,
+            self._on_anim_selected, side="top")
 
-        self.chime_pills_box = ctk.CTkFrame(c1_left, fg_color="transparent")
-        self.chime_pills_box.pack(side="left")
-        self.chime_pill_widgets = {}
+        self._section_label(right_col, "Behavior", top=0)
+        self._hairline(right_col, pady=(0, 0))
 
-        curr_theme = settings.sound_theme.lower()
-        if not settings.sound_feedback:
-            curr_chime_key = "none"
-        else:
-            curr_chime_key = curr_theme
+        self.sw_startup = self._setting_row(
+            right_col, "Start with Windows", "Launch into the tray when you sign in",
+            self._is_startup_enabled(), self._toggle_startup)
+        self.sw_chime_prior = self._setting_row(
+            right_col, "Chime on press", "Short confirmation when recording starts",
+            bool(settings.sound_feedback and settings.sound_chime_prior),
+            self._toggle_chime_prior)
+        self.sw_chime_after = self._setting_row(
+            right_col, "Chime on paste", "Confirmation once text lands in your app",
+            bool(settings.sound_feedback and settings.sound_chime_after),
+            self._toggle_chime_after, divider=False)
 
-        for label, val in self.chime_options:
-            btn = ctk.CTkButton(
-                self.chime_pills_box,
-                text=label,
-                font=ctk.CTkFont(family="Segoe UI", size=11, weight="normal"),
-                width=46,
-                height=26,
-                corner_radius=13,
-                command=lambda v=val: self._on_chime_pill_selected(v)
-            )
-            btn.pack(side="left", padx=2)
-            self.chime_pill_widgets[val] = btn
+        actions = ctk.CTkFrame(page, fg_color="transparent")
+        actions.pack(fill="x", pady=(30, 0))
 
-        self._refresh_chime_pill_states(curr_chime_key)
+        ctk.CTkButton(
+            actions, text="Test voice typing", font=theme.font(12, "bold"),
+            height=38, width=170, corner_radius=theme.RADIUS["control"],
+            fg_color=theme.t("accent"), hover_color=theme.t("accent_hover"),
+            text_color="#FFFFFF", command=self._open_test_modal,
+        ).pack(side="left")
 
-        # Divider line
-        div1 = ctk.CTkFrame(c1_content, width=1, height=28, fg_color="#e5e7eb")
-        div1.pack(side="left", padx=14)
+        ctk.CTkButton(
+            actions, text="Custom words", font=theme.font(12),
+            height=38, width=150, corner_radius=theme.RADIUS["control"],
+            fg_color="transparent", hover_color=theme.t("surface_sunk"),
+            border_width=1, border_color=theme.t("border_strong"),
+            text_color=theme.t("text"), command=self._open_vocab_dialog,
+        ).pack(side="left", padx=10)
 
-        # Column Right: Wave Animation with Vector Wave Icon
-        c1_right = ctk.CTkFrame(c1_content, fg_color="transparent")
-        c1_right.pack(side="left", fill="x", expand=True)
+    def _ledger_cell(self, parent, label, value, last=False, name=None):
+        cell = ctk.CTkFrame(parent, fg_color="transparent")
+        cell.pack(side="left", fill="x", expand=True)
+        ctk.CTkLabel(cell, text=label.upper(), font=theme.font(11, "bold"),
+                     text_color=theme.t("text_subtle")).pack(anchor="w")
+        lbl = ctk.CTkLabel(cell, text=value, font=theme.font(14, "bold"),
+                           text_color=theme.t("text"))
+        lbl.pack(anchor="w", pady=(3, 0))
+        if name == "latency":
+            self.latency_ledger_lbl = lbl
+        if not last:
+            ctk.CTkFrame(parent, width=1, height=32, fg_color=theme.t("border")).pack(
+                side="left", padx=18)
 
-        anim_label_row = ctk.CTkFrame(c1_right, fg_color="transparent")
-        anim_label_row.pack(side="left", padx=(0, 12))
+    def _keycap(self, parent, text):
+        cap = ctk.CTkFrame(parent, fg_color=theme.t("ink_raised"),
+                           corner_radius=6, width=44, height=32)
+        cap.pack(side="left")
+        cap.pack_propagate(False)
+        label = ctk.CTkLabel(cap, text=text, font=theme.font(13, "bold"),
+                             text_color=theme.t("on_ink"))
+        label.pack(expand=True)
+        return label
 
-        anim_lbl = ctk.CTkLabel(
-            anim_label_row,
-            text="  Wave Animation",
-            image=get_icon("wave", color="#1e293b", size=(16, 16)),
-            compound="left",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            text_color="#1e293b"
-        )
-        anim_lbl.pack(side="left")
+    def _key_labels(self):
+        hk = settings.hotkey.lower()
+        if "+" in hk:
+            parts = hk.split("+")
+            return parts[0].capitalize(), parts[-1].capitalize()
+        return hk.upper(), ""
 
-        self.anim_pills_box = ctk.CTkFrame(c1_right, fg_color="transparent")
-        self.anim_pills_box.pack(side="left")
-        self.anim_pill_widgets = {}
+    def _setting_row(self, parent, title, subtitle, on, command, divider=True):
+        if divider:
+            self._hairline(parent)
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.pack(fill="x", pady=11)
 
-        curr_anim = settings.indicator_animation.lower()
+        text_box = ctk.CTkFrame(row, fg_color="transparent")
+        text_box.pack(side="left", fill="x", expand=True)
+        ctk.CTkLabel(text_box, text=title, font=theme.font(13),
+                     text_color=theme.t("text")).pack(anchor="w")
+        ctk.CTkLabel(text_box, text=subtitle, font=theme.font(11),
+                     text_color=theme.t("text_subtle")).pack(anchor="w", pady=(1, 0))
 
-        for label, val in self.anim_options:
-            btn = ctk.CTkButton(
-                self.anim_pills_box,
-                text=label,
-                font=ctk.CTkFont(family="Segoe UI", size=11, weight="normal"),
-                width=48,
-                height=26,
-                corner_radius=13,
-                command=lambda v=val: self._on_anim_pill_selected(v)
-            )
-            btn.pack(side="left", padx=2)
-            self.anim_pill_widgets[val] = btn
+        sw = self._switch(row, on, command)
+        sw.pack(side="right", anchor="center")
+        return sw
 
-        self._refresh_anim_pill_states(curr_anim)
-
-        # ---------------- CARD 2: OPTIONS ----------------
-        c2 = ctk.CTkFrame(
-            self.page_home,
-            fg_color="#ffffff",
-            corner_radius=12,
-            border_width=1,
-            border_color="#e5e7eb"
-        )
-        c2.pack(fill="x", pady=(0, 16))
-
-        c2_title = ctk.CTkLabel(
-            c2,
-            text="Options",
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            text_color="#0f172a"
-        )
-        c2_title.pack(anchor="w", padx=20, pady=(12, 8))
-
-        c2_content = ctk.CTkFrame(c2, fg_color="transparent")
-        c2_content.pack(fill="x", padx=20, pady=(0, 14))
-
-        # Col 1: Start with Windows
-        c2_col1 = ctk.CTkFrame(c2_content, fg_color="transparent")
-        c2_col1.pack(side="left", fill="x", expand=True)
-
-        win_lbl = ctk.CTkLabel(
-            c2_col1,
-            text="  Start with Windows",
-            image=get_icon("windows", color="#1e293b", size=(16, 16)),
-            compound="left",
-            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
-            text_color="#1e293b"
-        )
-        win_lbl.pack(side="left")
-
-        self.sw_startup = ctk.CTkSwitch(
-            c2_col1,
-            text="",
-            width=44,
-            height=22,
-            progress_color="#2b3038",
-            button_color="#ffffff",
-            button_hover_color="#f1f5f9",
-            fg_color="#cbd5e1",
-            command=self._toggle_startup
-        )
-        self.sw_startup.pack(side="right", padx=(0, 10))
-        if self._is_startup_enabled():
-            self.sw_startup.select()
-
-        # Divider 1
-        div2 = ctk.CTkFrame(c2_content, width=1, height=26, fg_color="#e5e7eb")
-        div2.pack(side="left", padx=10)
-
-        # Col 2: Chime Prior (On Press)
-        c2_col2 = ctk.CTkFrame(c2_content, fg_color="transparent")
-        c2_col2.pack(side="left", fill="x", expand=True)
-
-        prior_lbl = ctk.CTkLabel(
-            c2_col2,
-            text="  Chime: Prior (Press)",
-            image=get_icon("bell", color="#1e293b", size=(16, 16)),
-            compound="left",
-            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
-            text_color="#1e293b"
-        )
-        prior_lbl.pack(side="left")
-
-        self.sw_chime_prior = ctk.CTkSwitch(
-            c2_col2,
-            text="",
-            width=44,
-            height=22,
-            progress_color="#2b3038",
-            button_color="#ffffff",
-            button_hover_color="#f1f5f9",
-            fg_color="#cbd5e1",
-            command=self._toggle_chime_prior
-        )
-        self.sw_chime_prior.pack(side="right", padx=(0, 10))
-        if settings.sound_feedback and settings.sound_chime_prior:
-            self.sw_chime_prior.select()
-
-        # Divider 2
-        div3 = ctk.CTkFrame(c2_content, width=1, height=26, fg_color="#e5e7eb")
-        div3.pack(side="left", padx=10)
-
-        # Col 3: Chime After (On Finish)
-        c2_col3 = ctk.CTkFrame(c2_content, fg_color="transparent")
-        c2_col3.pack(side="left", fill="x", expand=True)
-
-        after_lbl = ctk.CTkLabel(
-            c2_col3,
-            text="  Chime: After (Finish)",
-            image=get_icon("bell", color="#1e293b", size=(16, 16)),
-            compound="left",
-            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
-            text_color="#1e293b"
-        )
-        after_lbl.pack(side="left")
-
-        self.sw_chime_after = ctk.CTkSwitch(
-            c2_col3,
-            text="",
-            width=44,
-            height=22,
-            progress_color="#2b3038",
-            button_color="#ffffff",
-            button_hover_color="#f1f5f9",
-            fg_color="#cbd5e1",
-            command=self._toggle_chime_after
-        )
-        self.sw_chime_after.pack(side="right")
-        if settings.sound_feedback and settings.sound_chime_after:
-            self.sw_chime_after.select()
-
-        # ---------------- BOTTOM ACTIONS ROW ----------------
-        bottom_actions = ctk.CTkFrame(self.page_home, fg_color="transparent")
-        bottom_actions.pack(pady=(4, 0))
-
-        test_btn = ctk.CTkButton(
-            bottom_actions,
-            text="  Test Voice Typing",
-            image=get_icon("play", color="#ffffff", size=(12, 12)),
-            compound="left",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            fg_color="#2b3038",
-            hover_color="#1f2328",
-            text_color="#ffffff",
-            height=38,
-            width=180,
-            corner_radius=9,
-            command=self._open_test_modal
-        )
-        test_btn.pack(side="left", padx=8)
-
-        words_btn = ctk.CTkButton(
-            bottom_actions,
-            text="  Custom Words",
-            image=get_icon("words", color="#1e293b", size=(16, 16)),
-            compound="left",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            fg_color="#ffffff",
-            hover_color="#f8fafc",
-            border_width=1,
-            border_color="#d1d5db",
-            text_color="#1e293b",
-            height=38,
-            width=170,
-            corner_radius=9,
-            command=self._open_vocab_dialog
-        )
-        words_btn.pack(side="left", padx=8)
-
-    # -------------------------------------------------------------------------
-    # HERO CARD WAVEFORM RENDERER
-    # -------------------------------------------------------------------------
-    def _render_hero_waveform(self):
+    def _render_waveform(self):
+        """Deterministic spectral bars - product motion stays in the pill."""
         c = self.wave_canvas
         c.delete("all")
+        width, height = 290, 70
+        center = height / 2
+        bars = 33
+        gap = width / bars
 
-        # Subtle background curves for aesthetic depth
-        c.create_arc(-20, 20, 180, 120, start=0, extent=180, style="arc", outline="#2b323c", width=1)
-        c.create_arc(100, 30, 300, 130, start=0, extent=180, style="arc", outline="#2b323c", width=1)
-
-        # Symmetrical white vertical soundwave bars
-        # 17 bars centered in canvas
-        heights = [6, 10, 16, 26, 42, 60, 72, 54, 76, 54, 72, 60, 42, 26, 16, 10, 6]
-        canvas_w = 280
-        center_y = 45
-        bar_w = 3.5
-        spacing = 9
-
-        start_x = (canvas_w - (len(heights) * spacing)) / 2
-
-        for i, h in enumerate(heights):
-            x = start_x + (i * spacing)
-            y1 = center_y - (h / 2)
-            y2 = center_y + (h / 2)
-            # Draw rounded cap line for each bar
-            c.create_line(x, y1, x, y2, fill="#ffffff", width=bar_w, capstyle="round")
+        for i in range(bars):
+            phase = i / bars * math.tau
+            envelope = math.sin(i / (bars - 1) * math.pi) ** 1.5
+            detail = 0.55 + 0.45 * abs(math.sin(phase * 2.1) * math.cos(phase * 0.7))
+            h = max(2.0, envelope * detail * 27)
+            x = gap * i + gap / 2
+            color = theme.t("accent") if h > 18 else theme.t("on_ink_muted")
+            c.create_line(x, center - h, x, center + h, width=2.4,
+                          fill=color, capstyle="round")
 
     # -------------------------------------------------------------------------
-    # PILL CONTROLS HANDLERS
-    # -------------------------------------------------------------------------
-    def _refresh_chime_pill_states(self, active_val: str):
-        for val, btn in self.chime_pill_widgets.items():
-            if val == active_val:
-                btn.configure(
-                    fg_color="#2b3038",
-                    hover_color="#1f2328",
-                    text_color="#ffffff",
-                    border_width=0
-                )
-            else:
-                btn.configure(
-                    fg_color="#ffffff",
-                    hover_color="#f3f4f6",
-                    text_color="#475569",
-                    border_width=1,
-                    border_color="#d1d5db"
-                )
-
-    def _on_chime_pill_selected(self, val: str):
-        if val == "none":
-            settings.update_settings({
-                "sound_feedback": False,
-                "sound_chime_prior": False,
-                "sound_chime_after": False
-            })
-            self.sw_chime_prior.deselect()
-            self.sw_chime_after.deselect()
-            self._refresh_chime_pill_states("none")
-        else:
-            settings.update_settings({
-                "sound_feedback": True,
-                "sound_theme": val,
-                "sound_chime_prior": True,
-                "sound_chime_after": True
-            })
-            self.sw_chime_prior.select()
-            self.sw_chime_after.select()
-            self._refresh_chime_pill_states(val)
-            sound.preview(val, "start")
-
-    def _toggle_chime_prior(self):
-        val = bool(self.sw_chime_prior.get() == 1)
-        settings.update_settings({"sound_chime_prior": val})
-        if val:
-            settings.update_settings({"sound_feedback": True})
-            theme = getattr(settings, "sound_theme", "pop")
-            if theme == "none":
-                theme = "pop"
-                settings.update_settings({"sound_theme": "pop"})
-            self._refresh_chime_pill_states(theme)
-            sound.preview(theme, "start")
-        else:
-            if not self.sw_chime_after.get():
-                settings.update_settings({"sound_feedback": False})
-                self._refresh_chime_pill_states("none")
-
-    def _toggle_chime_after(self):
-        val = bool(self.sw_chime_after.get() == 1)
-        settings.update_settings({"sound_chime_after": val})
-        if val:
-            settings.update_settings({"sound_feedback": True})
-            theme = getattr(settings, "sound_theme", "pop")
-            if theme == "none":
-                theme = "pop"
-                settings.update_settings({"sound_theme": "pop"})
-            self._refresh_chime_pill_states(theme)
-            sound.preview(theme, "success")
-        else:
-            if not self.sw_chime_prior.get():
-                settings.update_settings({"sound_feedback": False})
-                self._refresh_chime_pill_states("none")
-
-    def _refresh_anim_pill_states(self, active_val: str):
-        for val, btn in self.anim_pill_widgets.items():
-            if val == active_val:
-                btn.configure(
-                    fg_color="#2b3038",
-                    hover_color="#1f2328",
-                    text_color="#ffffff",
-                    border_width=0
-                )
-            else:
-                btn.configure(
-                    fg_color="#ffffff",
-                    hover_color="#f3f4f6",
-                    text_color="#475569",
-                    border_width=1,
-                    border_color="#d1d5db"
-                )
-
-    def _on_anim_pill_selected(self, val: str):
-        settings.update_settings({"indicator_animation": val})
-        self._refresh_anim_pill_states(val)
-
-    # -------------------------------------------------------------------------
-    # STARTUP TOGGLE (WINDOWS SHORTCUT)
-    # -------------------------------------------------------------------------
-    def _is_startup_enabled(self) -> bool:
-        sc = Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / "Project Voice.lnk"
-        return sc.exists()
-
-    def _toggle_startup(self):
-        startup_dir = Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
-        sc_path = startup_dir / "Project Voice.lnk"
-
-        if self.sw_startup.get() == 1:
-            base_dir = settings.base_dir
-            exe_path = base_dir / "Project Voice.exe"
-            if not exe_path.exists():
-                exe_path = base_dir / "dist" / "Project Voice" / "Project Voice.exe"
-            icon_path = base_dir / "assets" / "icon.ico"
-
-            def _ps_esc(p):
-                return str(p).replace("'", "''")
-
-            ps_cmd = f"""
-            $ws = New-Object -ComObject WScript.Shell
-            $s = $ws.CreateShortcut('{_ps_esc(sc_path)}')
-            $s.TargetPath = '{_ps_esc(exe_path)}'
-            $s.Arguments = '--tray'
-            $s.WorkingDirectory = '{_ps_esc(exe_path.parent)}'
-            $s.IconLocation = '{_ps_esc(icon_path)},0'
-            $s.Description = 'Project Voice - Background Voice Typing'
-            $s.Save()
-            """
-            subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True)
-        else:
-            if sc_path.exists():
-                try:
-                    sc_path.unlink()
-                except Exception:
-                    pass
-
-    # -------------------------------------------------------------------------
-    # 2. VOICE TYPING PAGE (STT MODEL & SCRATCHPAD)
+    # VOICE TYPING
     # -------------------------------------------------------------------------
     def _build_voice_typing_page(self):
-        v_title = ctk.CTkLabel(
-            self.page_voice,
-            text="Voice Typing Configuration",
-            font=ctk.CTkFont(family="Segoe UI", size=22, weight="bold"),
-            text_color="#0f172a"
-        )
-        v_title.pack(anchor="w", pady=(0, 6))
+        page = self.page_voice
+        self._masthead(page, "Voice typing",
+                       "Speech recognition and cleanup pass, tuned for Hinglish code-switching")
+        ctk.CTkFrame(page, fg_color="transparent", height=24).pack(fill="x")
 
-        v_sub = ctk.CTkLabel(
-            self.page_voice,
-            text="Ultra-low latency speech recognition powered by Groq LPU Whisper",
-            font=ctk.CTkFont(family="Segoe UI", size=13),
-            text_color="#64748b"
-        )
-        v_sub.pack(anchor="w", pady=(0, 16))
+        ledger = ctk.CTkFrame(page, fg_color="transparent")
+        ledger.pack(fill="x", pady=(0, 24))
+        self._ledger_cell(ledger, "Speech model", settings.stt_model)
+        self._ledger_cell(ledger, "Cleanup model", settings.llm_model)
+        self._ledger_cell(ledger, "Sample rate", f"{settings.sample_rate // 1000} kHz", last=True)
 
-        # Info Card
-        card = ctk.CTkFrame(self.page_voice, fg_color="#ffffff", corner_radius=12, border_width=1, border_color="#e5e7eb")
-        card.pack(fill="x", pady=(0, 16))
+        self._section_label(page, "Live scratchpad", top=0)
+        self._hairline(page, pady=(0, 14))
 
-        c_inner = ctk.CTkFrame(card, fg_color="transparent")
-        c_inner.pack(fill="x", padx=20, pady=16)
-
-        row1 = ctk.CTkFrame(c_inner, fg_color="transparent")
-        row1.pack(fill="x", pady=(0, 8))
-
-        lbl_model = ctk.CTkLabel(
-            row1,
-            text="Speech Model:",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            text_color="#1e293b"
-        )
-        lbl_model.pack(side="left")
-
-        val_model = ctk.CTkLabel(
-            row1,
-            text=f"Groq {settings.stt_model} (Auto Hinglish/English Code-Switch)",
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            text_color="#2563eb"
-        )
-        val_model.pack(side="left", padx=8)
-
-        row2 = ctk.CTkFrame(c_inner, fg_color="transparent")
-        row2.pack(fill="x")
-
-        lbl_format = ctk.CTkLabel(
-            row2,
-            text="LLM Cleaner:",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            text_color="#1e293b"
-        )
-        lbl_format.pack(side="left")
-
-        val_format = ctk.CTkLabel(
-            row2,
-            text=f"{settings.llm_model} (Zero filler words, strict context formatting)",
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            text_color="#475569"
-        )
-        val_format.pack(side="left", padx=8)
-
-        # Embedded Scratchpad Card
-        sc_card = ctk.CTkFrame(self.page_voice, fg_color="#ffffff", corner_radius=12, border_width=1, border_color="#e5e7eb")
-        sc_card.pack(fill="both", expand=True)
-
-        sc_inner = ctk.CTkFrame(sc_card, fg_color="transparent")
-        sc_inner.pack(fill="both", expand=True, padx=20, pady=16)
-
-        sc_top = ctk.CTkFrame(sc_inner, fg_color="transparent")
-        sc_top.pack(fill="x", pady=(0, 8))
-
-        sc_title = ctk.CTkLabel(
-            sc_top,
-            text="Voice Typing Scratchpad (Live Test)",
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            text_color="#0f172a"
-        )
-        sc_title.pack(side="left")
-
-        self.voice_latency_lbl = ctk.CTkLabel(
-            sc_top,
-            text="Hold shortcut and speak to test",
-            font=ctk.CTkFont(family="Segoe UI", size=11),
-            text_color="#64748b"
-        )
-        self.voice_latency_lbl.pack(side="right")
+        ctk.CTkLabel(
+            page, text="Click into another app, hold your shortcut, and speak. "
+                        "Recognised text appears here while you test.",
+            font=theme.font(12), text_color=theme.t("text_muted"),
+            justify="left", wraplength=620).pack(anchor="w", pady=(0, 12))
 
         self.voice_notepad = ctk.CTkTextbox(
-            sc_inner,
-            font=ctk.CTkFont(family="Segoe UI", size=13),
-            fg_color="#f8fafc",
-            border_width=1,
-            border_color="#cbd5e1",
-            text_color="#0f172a"
-        )
-        self.voice_notepad.pack(fill="both", expand=True, pady=(0, 8))
-        self.voice_notepad.insert("1.0", "Click here, press and hold [Ctrl + Space] and speak naturally...")
+            page, height=250, font=theme.font(13),
+            fg_color=theme.t("surface"), border_width=1,
+            border_color=theme.t("border"), text_color=theme.t("text"),
+            corner_radius=theme.RADIUS["control"])
+        self.voice_notepad.pack(fill="both", expand=True, pady=(0, 10))
+        self.voice_notepad.insert(
+            "1.0", "Hold [Ctrl + Space] anywhere on your PC and speak naturally.")
+
+        self.voice_latency_lbl = ctk.CTkLabel(
+            page, text="Waiting for your first dictation",
+            font=theme.font(11), text_color=theme.t("text_subtle"))
+        self.voice_latency_lbl.pack(anchor="w")
 
     # -------------------------------------------------------------------------
-    # 3. SHORTCUTS PAGE
+    # SHORTCUTS
     # -------------------------------------------------------------------------
     def _build_shortcuts_page(self):
-        s_title = ctk.CTkLabel(
-            self.page_shortcuts,
-            text="Global Shortcuts",
-            font=ctk.CTkFont(family="Segoe UI", size=22, weight="bold"),
-            text_color="#0f172a"
-        )
-        s_title.pack(anchor="w", pady=(0, 6))
+        page = self.page_shortcuts
+        self._masthead(page, "Shortcuts",
+                       "One push-to-talk chord that works in every Windows application")
+        ctk.CTkFrame(page, fg_color="transparent", height=24).pack(fill="x")
 
-        s_sub = ctk.CTkLabel(
-            self.page_shortcuts,
-            text="Configure push-to-talk hotkeys that work across any application in Windows",
-            font=ctk.CTkFont(family="Segoe UI", size=13),
-            text_color="#64748b"
-        )
-        s_sub.pack(anchor="w", pady=(0, 16))
+        self._section_label(page, "Primary shortcut", top=0)
+        self._hairline(page, pady=(0, 14))
 
-        card = ctk.CTkFrame(self.page_shortcuts, fg_color="#ffffff", corner_radius=12, border_width=1, border_color="#e5e7eb")
-        card.pack(fill="x", pady=(0, 16))
-
-        inner = ctk.CTkFrame(card, fg_color="transparent")
-        inner.pack(fill="x", padx=20, pady=16)
-
-        row1 = ctk.CTkFrame(inner, fg_color="transparent")
-        row1.pack(fill="x", pady=(0, 14))
-
-        lbl_hotkey = ctk.CTkLabel(
-            row1,
-            text="Primary Shortcut:",
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            text_color="#1e293b"
-        )
-        lbl_hotkey.pack(side="left")
+        row = ctk.CTkFrame(page, fg_color="transparent")
+        row.pack(fill="x", pady=(0, 22))
 
         self.hk_picker = ctk.CTkOptionMenu(
-            row1,
-            values=["ctrl+space", "f8", "alt_r", "ctrl+shift+space"],
-            width=160,
-            height=32,
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            fg_color="#2b3038",
-            button_color="#1f2328",
-            button_hover_color="#111827",
-            command=self._on_hotkey_change
-        )
+            row, values=["ctrl+space", "f8", "alt_r", "ctrl+shift+space"],
+            width=190, height=34, font=theme.font(12),
+            fg_color=theme.t("surface_sunk"),
+            button_color=theme.t("surface_sunk"),
+            button_hover_color=theme.t("border"),
+            text_color=theme.t("text"),
+            dropdown_fg_color=theme.t("surface"),
+            dropdown_hover_color=theme.t("surface_sunk"),
+            dropdown_text_color=theme.t("text"),
+            command=self._on_hotkey_change)
         self.hk_picker.set(settings.hotkey)
-        self.hk_picker.pack(side="left", padx=14)
+        self.hk_picker.pack(side="left")
 
-        row2 = ctk.CTkFrame(inner, fg_color="transparent")
-        row2.pack(fill="x")
+        ctk.CTkLabel(row, text=f"Fallback: {settings.fallback_hotkey.upper()}",
+                     font=theme.font(11), text_color=theme.t("text_subtle")).pack(side="left", padx=16)
 
-        lbl_fall = ctk.CTkLabel(
-            row2,
-            text=f"Fallback Hotkey: [{settings.fallback_hotkey.upper()}] (Always active in case of conflict)",
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            text_color="#64748b"
-        )
-        lbl_fall.pack(anchor="w")
+        self._section_label(page, "Walkthrough")
+        self._hairline(page, pady=(0, 14))
 
-        # Visual Help Card
-        guide_card = ctk.CTkFrame(self.page_shortcuts, fg_color="#ffffff", corner_radius=12, border_width=1, border_color="#e5e7eb")
-        guide_card.pack(fill="x")
-
-        g_inner = ctk.CTkFrame(guide_card, fg_color="transparent")
-        g_inner.pack(fill="x", padx=20, pady=16)
-
-        g_title = ctk.CTkLabel(
-            g_inner,
-            text="How Push-to-Talk Works",
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            text_color="#0f172a"
-        )
-        g_title.pack(anchor="w", pady=(0, 6))
-
-        tips = (
-            "1. Focus cursor into any app (Chrome, Word, WhatsApp, VS Code, Slack).\n"
-            "2. Press and hold [Ctrl + Space] — the glowing indicator pill appears.\n"
-            "3. Speak in Hindi, English, or mixed Hinglish naturally.\n"
-            "4. Release the shortcut — your speech is polished and typed automatically!"
-        )
-        g_text = ctk.CTkLabel(
-            g_inner,
-            text=tips,
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            text_color="#475569",
-            justify="left"
-        )
-        g_text.pack(anchor="w")
+        steps = [
+            ("01", "Focus any app", "Chrome, Word, WhatsApp, VS Code, Slack, Notion."),
+            ("02", "Hold the shortcut", "A slim pill appears above your taskbar."),
+            ("03", "Speak naturally", "Hindi, English, or a mix. No script switching."),
+            ("04", "Release", "Cleaned text is pasted into the window you started in."),
+        ]
+        for num, title, detail in steps:
+            step = ctk.CTkFrame(page, fg_color="transparent")
+            step.pack(fill="x", pady=7)
+            ctk.CTkLabel(step, text=num, font=theme.mono(11, "bold"), width=30,
+                         text_color=theme.t("accent"), anchor="w").pack(side="left", anchor="n")
+            body = ctk.CTkFrame(step, fg_color="transparent")
+            body.pack(side="left", fill="x", expand=True)
+            ctk.CTkLabel(body, text=title, font=theme.font(13, "bold"),
+                         text_color=theme.t("text")).pack(anchor="w")
+            ctk.CTkLabel(body, text=detail, font=theme.font(12),
+                         text_color=theme.t("text_muted")).pack(anchor="w", pady=(1, 0))
 
     def _on_hotkey_change(self, choice):
         settings.update_settings({"hotkey": choice})
-        # Update Hero card labels
-        if "ctrl" in choice and "space" in choice:
-            self.k1_lbl.configure(text="Ctrl")
-            if self.k2_lbl:
-                self.k2_lbl.configure(text="Space")
-        elif "+" in choice:
-            parts = choice.split("+")
-            self.k1_lbl.configure(text=parts[0].capitalize())
-            if self.k2_lbl:
-                self.k2_lbl.configure(text=parts[-1].capitalize())
-        else:
-            self.k1_lbl.configure(text=choice.upper())
-            if self.k2_lbl:
-                self.k2_lbl.configure(text="")
         if self.on_reinit_services:
             self.on_reinit_services()
+        k1, k2 = self._key_labels()
+        if getattr(self, "k1_cap", None) is not None and self.k1_cap.winfo_exists():
+            self.k1_cap.configure(text=k1)
+        if getattr(self, "k2_cap", None) is not None and self.k2_cap.winfo_exists():
+            self.k2_cap.configure(text=k2)
 
     # -------------------------------------------------------------------------
-    # 4. SETTINGS PAGE (GROQ API KEY)
+    # SETTINGS
     # -------------------------------------------------------------------------
     def _build_settings_page(self):
-        st_title = ctk.CTkLabel(
-            self.page_settings,
-            text="Settings & API Credentials",
-            font=ctk.CTkFont(family="Segoe UI", size=22, weight="bold"),
-            text_color="#0f172a"
-        )
-        st_title.pack(anchor="w", pady=(0, 6))
+        page = self.page_settings
+        self._masthead(page, "Settings",
+                       "Your Groq key stays on this machine and is never sent anywhere else")
+        ctk.CTkFrame(page, fg_color="transparent", height=24).pack(fill="x")
 
-        st_sub = ctk.CTkLabel(
-            self.page_settings,
-            text="Manage your private Groq API key and application preferences",
-            font=ctk.CTkFont(family="Segoe UI", size=13),
-            text_color="#64748b"
-        )
-        st_sub.pack(anchor="w", pady=(0, 16))
+        self._section_label(page, "Groq API key", top=0)
+        self._hairline(page, pady=(0, 14))
 
-        card = ctk.CTkFrame(self.page_settings, fg_color="#ffffff", corner_radius=12, border_width=1, border_color="#e5e7eb")
-        card.pack(fill="x", pady=(0, 16))
+        hint_row = ctk.CTkFrame(page, fg_color="transparent")
+        hint_row.pack(fill="x", pady=(0, 10))
+        ctk.CTkLabel(hint_row, text="Free tier includes 14,400 requests per day.",
+                     font=theme.font(12), text_color=theme.t("text_muted")).pack(side="left")
+        ctk.CTkButton(hint_row, text="Get a key", font=theme.font(11, "bold"),
+                      fg_color="transparent", hover_color=theme.t("accent_soft"),
+                      text_color=theme.t("accent_text"), width=80, height=26,
+                      command=lambda: webbrowser.open("https://console.groq.com/keys")
+                      ).pack(side="right")
 
-        inner = ctk.CTkFrame(card, fg_color="transparent")
-        inner.pack(fill="x", padx=20, pady=16)
-
-        top = ctk.CTkFrame(inner, fg_color="transparent")
-        top.pack(fill="x", pady=(0, 4))
-
-        title = ctk.CTkLabel(
-            top,
-            text="Groq API Key (Free High-Speed LPU)",
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            text_color="#0f172a"
-        )
-        title.pack(side="left")
-
-        get_link = ctk.CTkButton(
-            top,
-            text="Get Free Key (30s) ↗",
-            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
-            fg_color="#f1f5f9",
-            hover_color="#e2e8f0",
-            text_color="#2563eb",
-            height=26,
-            width=130,
-            command=lambda: webbrowser.open("https://console.groq.com/keys")
-        )
-        get_link.pack(side="right")
-
-        desc = ctk.CTkLabel(
-            inner,
-            text="Includes 14,400 free requests per day. Your key is stored securely on your local PC.",
-            font=ctk.CTkFont(family="Segoe UI", size=11),
-            text_color="#64748b"
-        )
-        desc.pack(anchor="w", pady=(0, 10))
-
-        row = ctk.CTkFrame(inner, fg_color="transparent")
-        row.pack(fill="x")
+        row = ctk.CTkFrame(page, fg_color="transparent")
+        row.pack(fill="x", pady=(0, 8))
 
         self.key_entry = ctk.CTkEntry(
-            row,
-            placeholder_text="Paste your gsk_... key here",
-            show="*",
-            height=36,
-            font=ctk.CTkFont(family="Consolas", size=11),
-            fg_color="#f8fafc",
-            border_color="#cbd5e1"
-        )
+            row, placeholder_text="gsk_...", show="*", height=38,
+            font=theme.mono(11), fg_color=theme.t("surface"),
+            border_color=theme.t("border_strong"), text_color=theme.t("text"))
         if settings.groq_api_key:
             self.key_entry.insert(0, settings.groq_api_key)
-        self.key_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
+        self.key_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
 
-        self.eye_btn = ctk.CTkButton(
-            row,
-            text="👁️",
-            width=36,
-            height=36,
-            fg_color="#f1f5f9",
-            hover_color="#e2e8f0",
-            text_color="#0f172a",
-            command=self._toggle_show_key
-        )
-        self.eye_btn.pack(side="left", padx=(0, 6))
+        ctk.CTkButton(row, text="Show", font=theme.font(11), width=62, height=38,
+                      fg_color="transparent", hover_color=theme.t("surface_sunk"),
+                      border_width=1, border_color=theme.t("border_strong"),
+                      text_color=theme.t("text_muted"),
+                      command=self._toggle_show_key).pack(side="left", padx=(0, 8))
 
         self.save_key_btn = ctk.CTkButton(
-            row,
-            text="Save & Test",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            fg_color="#2b3038",
-            hover_color="#1f2328",
-            height=36,
-            width=100,
-            command=self._test_and_save_key
-        )
+            row, text="Save and test", font=theme.font(12, "bold"), height=38, width=124,
+            fg_color=theme.t("accent"), hover_color=theme.t("accent_hover"),
+            text_color="#FFFFFF", command=self._test_and_save_key)
         self.save_key_btn.pack(side="right")
 
-        self.key_msg_lbl = ctk.CTkLabel(
-            inner,
-            text="",
-            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold")
-        )
-        self.key_msg_lbl.pack(anchor="w", pady=(6, 0))
+        self.key_msg_lbl = ctk.CTkLabel(page, text="", font=theme.font(11, "bold"),
+                                         text_color=theme.t("text_muted"))
+        self.key_msg_lbl.pack(anchor="w", pady=(4, 0))
+
+        self._section_label(page, "Appearance")
+        self._hairline(page, pady=(0, 0))
+
+        appearance_row = ctk.CTkFrame(page, fg_color="transparent")
+        appearance_row.pack(fill="x", pady=12)
+
+        text_box = ctk.CTkFrame(appearance_row, fg_color="transparent")
+        text_box.pack(side="left", fill="x", expand=True)
+        ctk.CTkLabel(text_box, text="Dark surface", font=theme.font(13),
+                     text_color=theme.t("text")).pack(anchor="w")
+        ctk.CTkLabel(text_box, text="Espresso ink instead of warm paper, "
+                                   "for this session only",
+                     font=theme.font(11), text_color=theme.t("text_subtle")).pack(anchor="w", pady=(1, 0))
+
+        self.settings_theme_switch = self._switch(
+            appearance_row, theme.mode() == "dark", self._toggle_appearance)
+        self.settings_theme_switch.pack(side="right", anchor="center")
+
+    def _sync_theme_switches(self):
+        dark = theme.mode() == "dark"
+        for sw in ("theme_switch", "settings_theme_switch"):
+            widget = getattr(self, sw, None)
+            if widget is None or not widget.winfo_exists():
+                continue
+            if dark:
+                widget.select()
+            else:
+                widget.deselect()
 
     def _toggle_show_key(self):
-        if self.key_entry.cget("show") == "*":
-            self.key_entry.configure(show="")
-        else:
-            self.key_entry.configure(show="*")
+        self.key_entry.configure(show="" if self.key_entry.cget("show") == "*" else "*")
 
     def _test_and_save_key(self):
-        k = self.key_entry.get().strip()
-        if not k:
-            self.key_msg_lbl.configure(text="✖ Please paste your Groq key.", text_color="#ef4444")
+        key = self.key_entry.get().strip()
+        if not key:
+            self.key_msg_lbl.configure(text="Paste your Groq key first.",
+                                       text_color=theme.t("danger"))
             return
 
-        self.key_msg_lbl.configure(text="Connecting to Groq API...", text_color="#2563eb")
+        self.key_msg_lbl.configure(text="Checking the key with Groq...",
+                                   text_color=theme.t("text_muted"))
         self.save_key_btn.configure(state="disabled")
 
-        def _val():
+        def _validate():
             try:
-                c = Groq(api_key=k, timeout=8.0)
-                c.models.list()
-                settings.update_api_key(k)
+                client = Groq(api_key=key, timeout=8.0)
+                client.models.list()
+                settings.update_api_key(key)
                 if self.on_reinit_services:
                     self.on_reinit_services()
 
                 def _ok():
                     self.save_key_btn.configure(state="normal")
-                    self.key_msg_lbl.configure(text="✔ Key verified & connected successfully!", text_color="#16a34a")
-                    self.home_status_badge.configure(
-                        text="✔  Ready to Use",
-                        text_color="#15803d",
-                        fg_color="#dcfce7"
-                    )
+                    self.key_msg_lbl.configure(text="Key verified. Voice typing is ready.",
+                                               text_color=theme.t("success"))
+                    self.home_status_badge.configure(text="Ready", text_color=theme.t("success"))
+                    self.status_text.configure(text="Connected")
+                    self.status_dot.configure(text_color=theme.t("success"))
                 self.after(0, _ok)
-            except Exception as e:
+            except Exception as exc:
                 def _fail(err):
                     self.save_key_btn.configure(state="normal")
-                    self.key_msg_lbl.configure(text=f"✖ Key invalid: {err[:55]}", text_color="#ef4444")
-                self.after(0, lambda: _fail(str(e)))
+                    self.key_msg_lbl.configure(text=f"Key rejected: {err[:60]}",
+                                               text_color=theme.t("danger"))
+                self.after(0, lambda: _fail(str(exc)))
 
-        threading.Thread(target=_val, daemon=True).start()
+        threading.Thread(target=_validate, daemon=True).start()
 
     # -------------------------------------------------------------------------
-    # 5. ABOUT PAGE
+    # ABOUT
     # -------------------------------------------------------------------------
     def _build_about_page(self):
-        ab_title = ctk.CTkLabel(
-            self.page_about,
-            text="About Project Voice",
-            font=ctk.CTkFont(family="Segoe UI", size=22, weight="bold"),
-            text_color="#0f172a"
-        )
-        ab_title.pack(anchor="w", pady=(0, 6))
+        page = self.page_about
+        self._masthead(page, "About",
+                       "Privacy-first dictation, built by Kartikey Diyewar")
+        ctk.CTkFrame(page, fg_color="transparent", height=24).pack(fill="x")
 
-        ab_sub = ctk.CTkLabel(
-            self.page_about,
-            text="Privacy-first, ultra-fast voice typing for Windows",
-            font=ctk.CTkFont(family="Segoe UI", size=13),
-            text_color="#64748b"
-        )
-        ab_sub.pack(anchor="w", pady=(0, 16))
+        self._section_label(page, "How it handles your voice", top=0)
+        self._hairline(page, pady=(0, 14))
 
-        card = ctk.CTkFrame(self.page_about, fg_color="#ffffff", corner_radius=12, border_width=1, border_color="#e5e7eb")
-        card.pack(fill="x")
+        facts = [
+            ("Audio never touches disk", "Captured in RAM and wiped the moment transcription finishes."),
+            ("No telemetry", "No analytics, no crash reporting, no usage pings."),
+            ("Bring your own key", "Requests go straight from this PC to Groq over TLS."),
+            ("Native Hinglish", "Phonetic repair keeps Roman Hinglish intact, no Devanagari drift."),
+        ]
+        for title, detail in facts:
+            item = ctk.CTkFrame(page, fg_color="transparent")
+            item.pack(fill="x", pady=7)
+            ctk.CTkLabel(item, text="—", font=theme.font(12), width=22,
+                         text_color=theme.t("accent")).pack(side="left", anchor="n")
+            body = ctk.CTkFrame(item, fg_color="transparent")
+            body.pack(side="left", fill="x", expand=True)
+            ctk.CTkLabel(body, text=title, font=theme.font(13, "bold"),
+                         text_color=theme.t("text")).pack(anchor="w")
+            ctk.CTkLabel(body, text=detail, font=theme.font(12),
+                         text_color=theme.t("text_muted")).pack(anchor="w", pady=(1, 0))
 
-        inner = ctk.CTkFrame(card, fg_color="transparent")
-        inner.pack(fill="x", padx=20, pady=16)
-
-        about_text = (
-            "• Version: 1.2.0\n"
-            "• Zero-Disk Audio Privacy: Speech captured in volatile RAM and immediately wiped.\n"
-            "• Hinglish & English Support: Automatic code-switching with punctuation & capitalization.\n"
-            "• Open Source: Developed with care by Kartikey Diyewar."
-        )
-        lbl = ctk.CTkLabel(
-            inner,
-            text=about_text,
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            text_color="#334155",
-            justify="left"
-        )
-        lbl.pack(anchor="w", pady=(0, 12))
-
-        gh_btn = ctk.CTkButton(
-            inner,
-            text="GitHub Repository ↗",
-            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
-            fg_color="#f1f5f9",
-            hover_color="#e2e8f0",
-            text_color="#2563eb",
-            height=28,
-            width=150,
-            command=lambda: webbrowser.open("https://github.com/KartikeyDiyewar/project-voice")
-        )
-        gh_btn.pack(anchor="w")
+        footer = ctk.CTkFrame(page, fg_color="transparent")
+        footer.pack(fill="x", pady=(24, 0))
+        ctk.CTkLabel(footer, text=f"Version {VERSION} · MIT licence",
+                     font=theme.font(11), text_color=theme.t("text_subtle")).pack(side="left")
+        ctk.CTkButton(footer, text="GitHub", font=theme.font(11, "bold"),
+                      fg_color="transparent", hover_color=theme.t("surface_sunk"),
+                      text_color=theme.t("accent_text"), width=70, height=26,
+                      command=lambda: webbrowser.open(
+                          "https://github.com/KartikeyDiyewar/project-voice")).pack(side="right")
 
     # -------------------------------------------------------------------------
-    # MODAL DIALOGS: CUSTOM WORDS & TEST MODAL
+    # FIRST-RUN THEME CHOOSER
     # -------------------------------------------------------------------------
-    def _open_vocab_dialog(self):
-        """Clean dialog for adding brand names, client names, or jargon."""
+    def maybe_ask_appearance(self):
+        """Shows the theme picker once, before the user has chosen a theme."""
+        if settings.appearance_chosen:
+            return
+        self.after(220, self._open_appearance_dialog)
+
+    def _open_appearance_dialog(self):
+        try:
+            self.deiconify()
+            self.lift()
+            self.focus_force()
+        except Exception:
+            pass
+
         dialog = ctk.CTkToplevel(self)
-        dialog.title("Custom Words Dictionary")
-        dialog.geometry("440x360")
+        dialog.title("Choose your theme")
+        dialog.geometry("640x404")
         dialog.resizable(False, False)
         dialog.attributes("-topmost", True)
-        dialog.configure(fg_color="#f8fafc")
+        dialog.configure(fg_color=theme.t("canvas"))
+        dialog.protocol("WM_DELETE_WINDOW", lambda: self._finish_appearance_choice(dialog, None))
 
-        d_inner = ctk.CTkFrame(dialog, fg_color="transparent")
-        d_inner.pack(fill="both", expand=True, padx=24, pady=20)
+        dialog.update_idletasks()
+        x = self.winfo_rootx() + (self.winfo_width() - 640) // 2
+        y = self.winfo_rooty() + (self.winfo_height() - 404) // 2
+        dialog.geometry(f"640x404+{max(0, x)}+{max(0, y)}")
 
-        lbl = ctk.CTkLabel(
-            d_inner,
-            text="Custom Vocabulary",
-            font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
-            text_color="#0f172a"
-        )
-        lbl.pack(anchor="w")
+        inner = ctk.CTkFrame(dialog, fg_color="transparent")
+        inner.pack(fill="both", expand=True, padx=30, pady=26)
 
-        sub = ctk.CTkLabel(
-            d_inner,
-            text="Add brand names, names, or industry jargon (one per line).",
-            font=ctk.CTkFont(family="Segoe UI", size=11),
-            text_color="#64748b"
-        )
-        sub.pack(anchor="w", pady=(2, 10))
+        ctk.CTkLabel(inner, text="Welcome to Project Voice", font=theme.font(24, "bold"),
+                     text_color=theme.t("text")).pack(anchor="w")
+        ctk.CTkLabel(inner, text="Pick the surface you would like to look at. "
+                                 "You can change this any time from Settings.",
+                     font=theme.font(12), text_color=theme.t("text_muted"),
+                     justify="left").pack(anchor="w", pady=(4, 20))
 
-        tb = ctk.CTkTextbox(
-            d_inner,
-            height=190,
-            font=ctk.CTkFont(family="Consolas", size=11),
-            fg_color="#ffffff",
-            border_width=1,
-            border_color="#cbd5e1",
-            text_color="#0f172a"
-        )
-        tb.pack(fill="both", expand=True, pady=(0, 12))
+        options = ctk.CTkFrame(inner, fg_color="transparent")
+        options.pack(fill="x")
+        options.grid_columnconfigure(0, weight=1, uniform="card")
+        options.grid_columnconfigure(1, weight=1, uniform="card")
+
+        self._theme_option(options, 0, "Light",
+                           "Warm paper", LIGHT_PREVIEW, lambda: self._finish_appearance_choice(dialog, "light"))
+        self._theme_option(options, 1, "Dark",
+                           "Espresso ink", DARK_PREVIEW, lambda: self._finish_appearance_choice(dialog, "dark"))
+
+        ctk.CTkLabel(inner, text="The floating pill stays dark in both themes.",
+                     font=theme.font(10), text_color=theme.t("text_subtle")).pack(anchor="w", pady=(18, 0))
+
+    def _theme_option(self, parent, column, title, subtitle, palette, on_pick):
+        card = ctk.CTkFrame(parent, fg_color=palette["surface"], corner_radius=theme.RADIUS["card"],
+                            border_width=1, border_color=palette["border"], cursor="hand2")
+        card.grid(row=0, column=column, sticky="nsew", padx=(0, 12) if column == 0 else (12, 0))
+
+        preview = ctk.CTkCanvas(card, width=250, height=112, bg=palette["surface"],
+                                highlightthickness=0, bd=0)
+        preview.pack(padx=16, pady=(16, 10))
+        self._paint_preview(preview, palette)
+
+        text_box = ctk.CTkFrame(card, fg_color="transparent")
+        text_box.pack(fill="x", padx=16, pady=(0, 16))
+        ctk.CTkLabel(text_box, text=title, font=theme.font(15, "bold"),
+                     text_color=palette["text"]).pack(anchor="w")
+        ctk.CTkLabel(text_box, text=subtitle, font=theme.font(11),
+                     text_color=palette["text_muted"]).pack(anchor="w", pady=(1, 0))
+
+        for widget in (card, preview, text_box):
+            widget.bind("<Button-1>", lambda _e: on_pick())
+
+    def _paint_preview(self, canvas, palette):
+        """Miniature of the dashboard so the choice is made on real layout."""
+        w, h = 250, 112
+        rail_w = 58
+
+        canvas.create_rectangle(0, 0, rail_w, h, fill=palette["sidebar"], outline="")
+        canvas.create_polygon([12, 12, 20, 12, 24, 16, 24, 24, 20, 28, 12, 28, 8, 24, 8, 16],
+                              fill=palette["accent"], outline="")
+        for row in range(3):
+            y = 44 + row * 16
+            canvas.create_rectangle(12, y, 46, y + 5, fill=palette["text_subtle"], outline="")
+
+        canvas.create_rectangle(rail_w, 0, w, h, fill=palette["canvas"], outline="")
+        canvas.create_rectangle(rail_w + 14, 12, rail_w + 120, 26,
+                                fill=palette["text"], outline="")
+        canvas.create_rectangle(rail_w + 14, 32, rail_w + 88, 39,
+                                fill=palette["text_subtle"], outline="")
+
+        canvas.create_rectangle(rail_w + 14, 48, w - 14, 90,
+                                fill=palette["ink"], outline="")
+        for i in range(9):
+            x = rail_w + 34 + i * 14
+            bar_h = 6 + (i % 3) * 7
+            canvas.create_line(x, 69 - bar_h, x, 69 + bar_h,
+                               fill=palette["accent"] if i % 4 == 0 else palette["on_ink_muted"],
+                               width=2, capstyle="round")
+
+        canvas.create_rectangle(rail_w + 14, 98, rail_w + 70, 104,
+                                fill=palette["accent"], outline="")
+
+    def _finish_appearance_choice(self, dialog, choice):
+        if choice in ("light", "dark"):
+            theme.set_mode(choice)
+            ctk.set_appearance_mode(choice)
+        else:
+            settings.update_settings({"appearance": theme.mode()})
+        try:
+            dialog.destroy()
+        except Exception:
+            pass
+        self._rebuild_ui()
+
+    # -------------------------------------------------------------------------
+    # HANDLERS
+    # -------------------------------------------------------------------------
+    def _on_chime_selected(self, value):
+        if value == "none":
+            settings.update_settings({"sound_feedback": False,
+                                      "sound_chime_prior": False, "sound_chime_after": False})
+            self.sw_chime_prior.deselect()
+            self.sw_chime_after.deselect()
+        else:
+            settings.update_settings({"sound_feedback": True, "sound_theme": value,
+                                      "sound_chime_prior": True, "sound_chime_after": True})
+            self.sw_chime_prior.select()
+            self.sw_chime_after.select()
+            sound.preview(value, "start")
+        self._set_pill_group(self.chime_group, value)
+
+    def _on_anim_selected(self, value):
+        settings.update_settings({"indicator_animation": value})
+        self._set_pill_group(self.anim_group, value)
+
+    def _toggle_chime_prior(self):
+        state = bool(self.sw_chime_prior.get())
+        settings.update_settings({"sound_chime_prior": state})
+        self._reconcile_sound_state(play="start" if state else None)
+
+    def _toggle_chime_after(self):
+        state = bool(self.sw_chime_after.get())
+        settings.update_settings({"sound_chime_after": state})
+        self._reconcile_sound_state(play="success" if state else None)
+
+    def _reconcile_sound_state(self, play=None):
+        prior = bool(self.sw_chime_prior.get())
+        after = bool(self.sw_chime_after.get())
+        active = prior or after
+        settings.update_settings({"sound_feedback": active})
+
+        if not active:
+            self._set_pill_group(self.chime_group, "none")
+            return
+
+        theme_name = settings.sound_theme
+        if theme_name == "none":
+            theme_name = "pop"
+            settings.update_settings({"sound_theme": theme_name})
+        self._set_pill_group(self.chime_group, theme_name)
+        if play:
+            sound.preview(theme_name, play)
+
+    def _toggle_appearance(self):
+        """Switches themes and remembers the choice for the next launch."""
+        new_mode = "light" if theme.mode() == "dark" else "dark"
+        theme.set_mode(new_mode)
+        ctk.set_appearance_mode(new_mode)
+        self._rebuild_ui()
+
+    def _rebuild_ui(self):
+        """Repaints the surface in place so the theme switch is immediate."""
+        active = self.active_tab
+        for child in self.winfo_children():
+            child.destroy()
+        self.nav_buttons.clear()
+        self.nav_icon_keys.clear()
+        self.nav_accent_bars.clear()
+        self.pages.clear()
+        self.configure(fg_color=theme.t("canvas"))
+        self._build_shell()
+        self._switch_page(active)
+        self.update_idletasks()
+        self._apply_native_chrome()
+
+    # -------------------------------------------------------------------------
+    # STARTUP
+    # -------------------------------------------------------------------------
+    def _startup_shortcut(self) -> Path:
+        return (Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows"
+                / "Start Menu" / "Programs" / "Startup" / "Project Voice.lnk")
+
+    def _is_startup_enabled(self) -> bool:
+        return self._startup_shortcut().exists()
+
+    def _toggle_startup(self):
+        shortcut = self._startup_shortcut()
+        if not self.sw_startup.get():
+            if shortcut.exists():
+                try:
+                    shortcut.unlink()
+                except Exception:
+                    pass
+            return
+
+        base_dir = settings.base_dir
+        exe_path = base_dir / "Project Voice.exe"
+        if not exe_path.exists():
+            exe_path = base_dir / "dist" / "Project Voice" / "Project Voice.exe"
+        icon_path = base_dir / "assets" / "icon.ico"
+
+        def esc(p):
+            return str(p).replace("'", "''")
+
+        ps = f"""
+        $ws = New-Object -ComObject WScript.Shell
+        $s = $ws.CreateShortcut('{esc(shortcut)}')
+        $s.TargetPath = '{esc(exe_path)}'
+        $s.Arguments = '--tray'
+        $s.WorkingDirectory = '{esc(exe_path.parent)}'
+        $s.IconLocation = '{esc(icon_path)},0'
+        $s.Description = 'Project Voice - Background Voice Typing'
+        $s.Save()
+        """
+        subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True)
+
+    # -------------------------------------------------------------------------
+    # DIALOGS
+    # -------------------------------------------------------------------------
+    def _open_vocab_dialog(self):
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Custom words")
+        dialog.geometry("460x400")
+        dialog.resizable(False, False)
+        dialog.attributes("-topmost", True)
+        dialog.configure(fg_color=theme.t("canvas"))
+
+        inner = ctk.CTkFrame(dialog, fg_color="transparent")
+        inner.pack(fill="both", expand=True, padx=26, pady=22)
+
+        ctk.CTkLabel(inner, text="Custom words", font=theme.font(19, "bold"),
+                     text_color=theme.t("text")).pack(anchor="w")
+        ctk.CTkLabel(inner, text="Names, brands, and jargon Whisper should expect. One per line.",
+                     font=theme.font(11), text_color=theme.t("text_muted")).pack(anchor="w", pady=(2, 12))
+
+        box = ctk.CTkTextbox(inner, height=190, font=theme.mono(12),
+                             fg_color=theme.t("surface"), border_width=1,
+                             border_color=theme.t("border"), text_color=theme.t("text"),
+                             corner_radius=theme.RADIUS["control"])
+        box.pack(fill="both", expand=True, pady=(0, 12))
 
         dict_file = settings.base_dir / "dictionary.json"
         if dict_file.exists():
             try:
-                with open(dict_file, "r", encoding="utf-8") as f:
-                    words = json.load(f).get("custom_words", [])
-                    tb.insert("1.0", "\n".join(words))
+                with open(dict_file, "r", encoding="utf-8") as fh:
+                    box.insert("1.0", "\n".join(json.load(fh).get("custom_words", [])))
             except Exception:
                 pass
 
-        def _save_v():
-            content = tb.get("1.0", "end").strip()
+        def _save():
+            content = box.get("1.0", "end").strip()
             words = [w.strip() for w in content.replace(",", "\n").split("\n") if w.strip()]
             try:
-                with open(dict_file, "w", encoding="utf-8") as f:
-                    json.dump({"custom_words": words}, f, indent=2)
+                with open(dict_file, "w", encoding="utf-8") as fh:
+                    json.dump({"custom_words": words}, fh, indent=2)
                 dialog.destroy()
             except Exception:
                 pass
 
-        btn = ctk.CTkButton(
-            d_inner,
-            text="Save Words",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            fg_color="#2b3038",
-            hover_color="#1f2328",
-            height=32,
-            width=110,
-            command=_save_v
-        )
-        btn.pack(anchor="e")
+        ctk.CTkButton(inner, text="Save words", font=theme.font(12, "bold"),
+                      height=34, width=118, fg_color=theme.t("accent"),
+                      hover_color=theme.t("accent_hover"), text_color="#FFFFFF",
+                      command=_save).pack(anchor="e")
 
     def _open_test_modal(self):
-        """Opens quick live test scratchpad for immediate microphone verification."""
         self._switch_page("Voice Typing")
         self.voice_notepad.focus_set()
 
     def update_dictation_latency(self, latency_ms: float, clean_text: str = ""):
-        """Called automatically after every dictation."""
         def _apply():
-            if hasattr(self, "voice_latency_lbl"):
+            if hasattr(self, "voice_latency_lbl") and self.voice_latency_lbl.winfo_exists():
                 self.voice_latency_lbl.configure(
-                    text=f"✔ Typed in {latency_ms:.0f}ms",
-                    text_color="#16a34a"
-                )
+                    text=f"Last pass completed in {latency_ms:.0f} ms",
+                    text_color=theme.t("success"))
+            if hasattr(self, "latency_ledger_lbl") and self.latency_ledger_lbl.winfo_exists():
+                self.latency_ledger_lbl.configure(text=f"{latency_ms:.0f} ms")
         self.after(0, _apply)
 
     # -------------------------------------------------------------------------
@@ -1396,7 +1201,7 @@ class DashboardWindow(ctk.CTk):
             try:
                 hwnd = ctypes.windll.user32.GetParent(self.winfo_id()) or self.winfo_id()
                 if hwnd:
-                    ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                    ctypes.windll.user32.ShowWindow(hwnd, 9)
                     ctypes.windll.user32.SetForegroundWindow(hwnd)
             except Exception:
                 pass

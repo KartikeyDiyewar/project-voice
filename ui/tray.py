@@ -5,11 +5,11 @@ Provides quick access to Dashboard / Settings, Project Folder, and clean exit.
 """
 
 import os
-import subprocess
 import threading
 from PIL import Image, ImageDraw
 import pystray
 from config.settings import BASE_DIR
+from ui import theme
 
 class TrayIcon:
     def __init__(self, on_open_dashboard=None, on_exit_callback=None):
@@ -17,8 +17,9 @@ class TrayIcon:
         self.on_exit_callback = on_exit_callback
         self.icon = None
 
-    def _create_icon_image(self, color="#2563eb"):
-        """Generates a clean 64x64 blue microphone icon dynamically."""
+    def _create_icon_image(self, color=None):
+        """Generates a clean 64x64 microphone icon in the brand accent."""
+        color = color or theme.on_ink("accent")
         width = 64
         height = 64
         image = Image.new("RGBA", (width, height), (0, 0, 0, 0))

@@ -36,3 +36,26 @@ def test_atomic_api_key_update(tmp_path):
     assert s.groq_api_key == "gsk_test123456789"
     assert env_file.exists()
     assert "GROQ_API_KEY=gsk_test123456789" in env_file.read_text(encoding="utf-8")
+
+
+def test_appearance_is_persisted_and_restored(tmp_path):
+    """First-run choice must survive a relaunch; missing choice falls back to light."""
+    import json
+    from ui import theme
+
+    ok_file = tmp_path / "settings.json"
+    s = Settings(settings_file=ok_file, env_file=tmp_path / ".env")
+
+    # Nothing stored yet -> light, and flagged as not chosen
+    assert s.appearance == "light"
+    assert s.appearance_chosen is False
+
+    # User picks dark on first launch -> persisted
+    s.update_settings({"appearance": "dark"})
+    assert s.appearance == "dark"
+    assert s.appearance_chosen is True
+    reloaded = Settings(settings_file=ok_file, env_file=tmp_path / ".env")
+    assert reloaded.appearance == "dark"
+
+    # A corrupt/absent choice must never break startup
+    assert theme.mode() in ("light", "dark")

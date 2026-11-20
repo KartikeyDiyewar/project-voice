@@ -16,6 +16,7 @@ import math
 import tkinter as tk
 import customtkinter as ctk
 from config.settings import settings
+from ui import theme
 
 user32 = ctypes.windll.user32
 GWL_EXSTYLE = -20
@@ -56,14 +57,14 @@ class FloatingIndicator:
         y = screen_h - 110  # Positioned comfortably above Windows taskbar
 
         self.root.geometry(f"{width}x{height}+{x}+{y}")
-        self.root.configure(fg_color="#090d16")
+        self.root.configure(fg_color=theme.on_ink("ink"))
 
         # Container frame styled like a rounded pill
         self.container = ctk.CTkFrame(
             self.root,
-            fg_color="#0d1322",
+            fg_color=theme.on_ink("ink_raised"),
             border_width=1,
-            border_color="#22304d",
+            border_color=theme.on_ink("ink_border"),
             corner_radius=23
         )
         self.container.pack(fill="both", expand=True, padx=1, pady=1)
@@ -73,7 +74,7 @@ class FloatingIndicator:
             self.container,
             width=46,
             height=26,
-            bg="#0d1322",
+            bg=theme.on_ink("ink_raised"),
             highlightthickness=0,
             bd=0
         )
@@ -83,8 +84,8 @@ class FloatingIndicator:
         self.text_label = ctk.CTkLabel(
             self.container,
             text="Listening...",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            text_color="#f8fafc"
+            font=theme.font(12, "bold"),
+            text_color=theme.on_ink("on_ink")
         )
         self.text_label.pack(side="left")
 
@@ -92,9 +93,9 @@ class FloatingIndicator:
         self.sub_label = ctk.CTkLabel(
             self.container,
             text="[ Ctrl + Space ]",
-            font=ctk.CTkFont(family="Consolas", size=10, weight="bold"),
-            text_color="#64748b",
-            fg_color="#141d33",
+            font=theme.mono(10, "bold"),
+            text_color=theme.on_ink("on_ink_muted"),
+            fg_color=theme.on_ink("ink"),
             corner_radius=6,
             padx=6,
             pady=2
@@ -156,11 +157,11 @@ class FloatingIndicator:
 
         if anim_style in ("off", "none", "static"):
             if self.current_state == "listening":
-                self.canvas.create_oval(17, 8, 27, 18, fill="#38bdf8", outline="")
-                self.text_label.configure(text="Listening...", text_color="#f8fafc")
+                self.canvas.create_oval(17, 8, 27, 18, fill=theme.on_ink("accent"), outline="")
+                self.text_label.configure(text="Listening...", text_color=theme.on_ink("on_ink"))
             elif self.current_state == "processing":
-                self.canvas.create_text(22, 13, text="✦", fill="#f59e0b", font=("Segoe UI", 12, "bold"))
-                self.text_label.configure(text="Refining voice...", text_color="#fde68a")
+                self.canvas.create_oval(17, 8, 27, 18, outline=theme.on_ink("warning"), width=2)
+                self.text_label.configure(text="Refining voice...", text_color=theme.on_ink("warning"))
             return
 
         if not self.is_animating:
@@ -188,7 +189,7 @@ class FloatingIndicator:
                 if not getattr(self, "_dot_items", None):
                     self.canvas.delete("all")
                     self._dot_items = [
-                        self.canvas.create_oval(0, 0, 0, 0, fill="#38bdf8", outline="")
+                        self.canvas.create_oval(0, 0, 0, 0, fill=theme.on_ink("accent"), outline="")
                         for _ in range(3)
                     ]
                 for i, item in enumerate(self._dot_items):
@@ -204,15 +205,16 @@ class FloatingIndicator:
                     py = 13 + math.sin(self.anim_phase * 2.0 + (px * 0.28)) * 6.5
                     pts.extend([px, py])
                 if len(pts) >= 4:
-                    self.canvas.create_line(*pts, smooth=True, width=2.6, fill="#38bdf8", capstyle=tk.ROUND)
+                    self.canvas.create_line(*pts, smooth=True, width=2.6, fill=theme.on_ink("accent"), capstyle=tk.ROUND)
 
             else:
                 # Default: "wave_bars" (Zero-allocation coords update)
                 if not getattr(self, "_bar_items", None):
                     self.canvas.delete("all")
-                    colors = ["#38bdf8", "#60a5fa", "#818cf8", "#a78bfa"]
+                    ramp = [theme.on_ink("accent"), theme.on_ink("accent_hover"),
+                            theme.on_ink("on_ink_muted"), theme.on_ink("accent")]
                     self._bar_items = [
-                        self.canvas.create_line(8 + i * 10, 13, 8 + i * 10, 13, width=3.2, fill=colors[i], capstyle=tk.ROUND)
+                        self.canvas.create_line(8 + i * 10, 13, 8 + i * 10, 13, width=3.2, fill=ramp[i], capstyle=tk.ROUND)
                         for i in range(4)
                     ]
                 for i, item in enumerate(self._bar_items):
@@ -223,14 +225,15 @@ class FloatingIndicator:
             # Dynamic moving wave dots on text
             dots_idx = (self.anim_tick_count // 14) % 4
             dots_str = ["", ".", ". .", ". . ."][dots_idx]
-            self.text_label.configure(text=f"Listening {dots_str}", text_color="#f8fafc")
+            self.text_label.configure(text=f"Listening {dots_str}", text_color=theme.on_ink("on_ink"))
 
         elif self.current_state == "processing":
             if not getattr(self, "_bar_items", None):
                 self.canvas.delete("all")
-                colors = ["#fbbf24", "#f59e0b", "#d97706", "#f59e0b"]
+                ramp = [theme.on_ink("warning"), theme.on_ink("warning"),
+                        theme.on_ink("on_ink_muted"), theme.on_ink("warning")]
                 self._bar_items = [
-                    self.canvas.create_line(8 + i * 10, 13, 8 + i * 10, 13, width=3.0, fill=colors[i], capstyle=tk.ROUND)
+                    self.canvas.create_line(8 + i * 10, 13, 8 + i * 10, 13, width=3.0, fill=ramp[i], capstyle=tk.ROUND)
                     for i in range(4)
                 ]
             for i, item in enumerate(self._bar_items):
@@ -240,7 +243,7 @@ class FloatingIndicator:
 
             dots_idx = (self.anim_tick_count // 14) % 4
             dots_str = ["", ".", ". .", ". . ."][dots_idx]
-            self.text_label.configure(text=f"Refining voice {dots_str}", text_color="#fde68a")
+            self.text_label.configure(text=f"Refining voice {dots_str}", text_color=theme.on_ink("warning"))
 
         # Schedule next frame at 16ms (~60 FPS)
         self.root.after(16, self._tick_animation)
@@ -254,8 +257,8 @@ class FloatingIndicator:
             return
         def _apply():
             self.current_state = "listening"
-            self.container.configure(border_color="#38bdf8")
-            self.sub_label.configure(text=f"[ {settings.hotkey.upper()} ]", text_color="#94a3b8")
+            self.container.configure(border_color=theme.on_ink("accent"))
+            self.sub_label.configure(text=f"[ {settings.hotkey.upper()} ]", text_color=theme.on_ink("on_ink_muted"))
             self._start_animation()
             self._show_no_activate()
         self.root.after(0, _apply)
@@ -266,8 +269,8 @@ class FloatingIndicator:
             return
         def _apply():
             self.current_state = "processing"
-            self.container.configure(border_color="#f59e0b")
-            self.sub_label.configure(text="Groq LPU", text_color="#f59e0b")
+            self.container.configure(border_color=theme.on_ink("warning"))
+            self.sub_label.configure(text="Groq LPU", text_color=theme.on_ink("warning"))
             self._start_animation()
             self._show_no_activate()
         self.root.after(0, _apply)
@@ -280,10 +283,10 @@ class FloatingIndicator:
             self._stop_animation()
             self.current_state = "pasted"
             self.canvas.delete("all")
-            self.canvas.create_text(23, 13, text="✔", fill="#10b981", font=("Segoe UI", 13, "bold"))
-            self.container.configure(border_color="#10b981")
-            self.text_label.configure(text="Pasted!", text_color="#34d399")
-            self.sub_label.configure(text="Done", text_color="#10b981")
+            self._draw_check(theme.on_ink("success"))
+            self.container.configure(border_color=theme.on_ink("success"))
+            self.text_label.configure(text="Pasted", text_color=theme.on_ink("success"))
+            self.sub_label.configure(text="Done", text_color=theme.on_ink("success"))
             self.root.after(700, self._hide_if_idle)
         self.root.after(0, _apply)
 
@@ -294,12 +297,20 @@ class FloatingIndicator:
             self._stop_animation()
             self.current_state = "error"
             self.canvas.delete("all")
-            self.canvas.create_text(23, 13, text="✕", fill="#f87171", font=("Segoe UI", 12, "bold"))
-            self.container.configure(border_color="#f87171")
-            self.text_label.configure(text=message[:20], text_color="#fca5a5")
-            self.sub_label.configure(text="Error", text_color="#f87171")
+            self._draw_cross(theme.on_ink("danger"))
+            self.container.configure(border_color=theme.on_ink("danger"))
+            self.text_label.configure(text=message[:20], text_color=theme.on_ink("danger"))
+            self.sub_label.configure(text="Error", text_color=theme.on_ink("danger"))
             self.root.after(1400, self._hide_if_idle)
         self.root.after(0, _apply)
+
+    def _draw_check(self, color):
+        self.canvas.create_line(16, 13, 21, 18, 28, 8, fill=color,
+                                width=2.4, capstyle=tk.ROUND, joinstyle=tk.ROUND)
+
+    def _draw_cross(self, color):
+        self.canvas.create_line(17, 8, 29, 18, fill=color, width=2.4, capstyle=tk.ROUND)
+        self.canvas.create_line(17, 18, 29, 8, fill=color, width=2.4, capstyle=tk.ROUND)
 
     def _hide_if_idle(self):
         if self.current_state in ("pasted", "idle", "error"):

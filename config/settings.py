@@ -111,6 +111,16 @@ class Settings:
         """Floating indicator animation: 'wave_bars', 'wave_dots', 'sine_wave'."""
         return self.data.get("indicator_animation", "wave_bars").lower()
 
+    @property
+    def appearance(self) -> str:
+        """Chosen dashboard theme: 'light' (warm paper) or 'dark' (espresso ink)."""
+        return self.data.get("appearance", "light").lower()
+
+    @property
+    def appearance_chosen(self) -> bool:
+        """False until the user picks a theme on first launch."""
+        return "appearance" in self.data
+
     def update_api_key(self, api_key: str) -> bool:
         """Saves GROQ_API_KEY to runtime environment and .env file atomically."""
         self.groq_api_key = api_key.strip()
