@@ -520,7 +520,7 @@ class DashboardWindow(ctk.CTk):
         self.wave_canvas.pack(side="right", anchor="center")
         self._render_waveform()
 
-        # ---- sound, motion and behavior in two columns ----------------------
+        # ---- feedback + behaviour: paired cards, toggle-driven detail --------
         columns = ctk.CTkFrame(page, fg_color="transparent")
         columns.pack(fill="x", pady=(0, 4))
         columns.grid_columnconfigure(0, weight=1, uniform="col")
@@ -532,37 +532,48 @@ class DashboardWindow(ctk.CTk):
         right_col = ctk.CTkFrame(columns, fg_color="transparent")
         right_col.grid(row=0, column=1, sticky="new")
 
-        self._section_label(left_col, "Feedback", top=0)
+        self._section_label(left_col, "Sound", top=0)
         self._hairline(left_col, pady=(0, 14))
 
-        ctk.CTkLabel(left_col, text="Chime", font=theme.font(13),
-                     text_color=theme.t("text")).pack(anchor="w", pady=(0, 7))
-        current_chime = settings.sound_theme
-        if current_chime not in {v for _, v in self.chime_options}:
-            current_chime = "pop"
-        self.chime_group = self._pill_group(
-            left_col, self.chime_options, current_chime, self._on_chime_selected, side="top")
+        prior_card = self._detail_card(
+            left_col, "Chime on press", "Confirms recording has started",
+            settings.sound_chime_prior, self._toggle_chime_prior)
+        self.sw_chime_prior = prior_card["switch"]
+        self.chime_prior_group = self._pill_group(
+            prior_card["detail"], self.chime_options,
+            self._valid_theme(settings.sound_theme_prior),
+            lambda v: self._on_cue_theme("prior", v), side="top")
+        self._sync_card_state(self.sw_chime_prior)
 
-        ctk.CTkLabel(left_col, text="Indicator motion", font=theme.font(13),
-                     text_color=theme.t("text")).pack(anchor="w", pady=(18, 7))
-        self.anim_group = self._pill_group(
-            left_col, self.anim_options, settings.indicator_animation,
-            self._on_anim_selected, side="top")
+        after_card = self._detail_card(
+            left_col, "Chime on paste", "Confirms text landed in your app",
+            settings.sound_chime_after, self._toggle_chime_after, top=14)
+        self.sw_chime_after = after_card["switch"]
+        self.chime_after_group = self._pill_group(
+            after_card["detail"], self.chime_options,
+            self._valid_theme(settings.sound_theme_after),
+            lambda v: self._on_cue_theme("after", v), side="top")
+        self._sync_card_state(self.sw_chime_after)
 
         self._section_label(right_col, "Behavior", top=0)
-        self._hairline(right_col, pady=(0, 0))
+        self._hairline(right_col, pady=(0, 14))
 
-        self.sw_startup = self._setting_row(
+        startup_card = self._detail_card(
             right_col, "Start with Windows", "Launch into the tray when you sign in",
             self._is_startup_enabled(), self._toggle_startup)
-        self.sw_chime_prior = self._setting_row(
-            right_col, "Chime on press", "Short confirmation when recording starts",
-            settings.sound_chime_prior, self._toggle_chime_prior)
-        self.sw_chime_after = self._setting_row(
-            right_col, "Chime on paste", "Confirmation once text lands in your app",
-            settings.sound_chime_after, self._toggle_chime_after, divider=False)
+        self.sw_startup = startup_card["switch"]
 
-        self._refresh_chime_availability()
+        anim_card = self._detail_card(
+            right_col, "Indicator motion", "How the floating pill reacts while listening",
+            settings.indicator_animation != "off", self._toggle_indicator,
+            top=14, toggle_label=False)
+        self.sw_indicator = anim_card["switch"]
+        self.anim_group = self._pill_group(
+            anim_card["detail"], self.anim_options,
+            settings.indicator_animation, self._on_anim_selected, side="top")
+        self._sync_card_state(self.sw_indicator)
+
+        self._refresh_cue_visibility()
 
         actions = ctk.CTkFrame(page, fg_color="transparent")
         actions.pack(fill="x", pady=(30, 0))
@@ -613,22 +624,55 @@ class DashboardWindow(ctk.CTk):
             return parts[0].capitalize(), parts[-1].capitalize()
         return hk.upper(), ""
 
-    def _setting_row(self, parent, title, subtitle, on, command, divider=True):
-        if divider:
-            self._hairline(parent)
-        row = ctk.CTkFrame(parent, fg_color="transparent")
-        row.pack(fill="x", pady=11)
+    def _detail_card(self, parent, title, subtitle, on, command,
+                     top=0, toggle_label=True):
+        """A setting as a card: title and switch on top, detail area underneath.
 
-        text_box = ctk.CTkFrame(row, fg_color="transparent")
+        The detail frame is shown only while the switch is on, so a row never
+        offers options for something that is currently disabled.
+        """
+        card = ctk.CTkFrame(parent, fg_color=theme.t("surface"), corner_radius=12,
+                            border_width=1, border_color=theme.t("border"))
+        card.pack(fill="x", pady=(top, 0))
+
+        head = ctk.CTkFrame(card, fg_color="transparent")
+        head.pack(fill="x", padx=16, pady=(13, 13))
+
+        text_box = ctk.CTkFrame(head, fg_color="transparent")
         text_box.pack(side="left", fill="x", expand=True)
-        ctk.CTkLabel(text_box, text=title, font=theme.font(13),
+        ctk.CTkLabel(text_box, text=title, font=theme.font(13, "bold"),
                      text_color=theme.t("text")).pack(anchor="w")
         ctk.CTkLabel(text_box, text=subtitle, font=theme.font(11),
-                     text_color=theme.t("text_subtle")).pack(anchor="w", pady=(1, 0))
+                     text_color=theme.t("text_subtle")).pack(anchor="w", pady=(2, 0))
 
-        sw = self._switch(row, on, command)
+        sw = self._switch(head, on, command)
         sw.pack(side="right", anchor="center")
-        return sw
+
+        state = None
+        if toggle_label:
+            state = ctk.CTkLabel(head, text="On" if on else "Off", width=24,
+                                 font=theme.font(11, "bold"),
+                                 text_color=theme.t("accent") if on
+                                 else theme.t("text_subtle"))
+            state.pack(side="right", padx=(0, 10))
+
+        detail = ctk.CTkFrame(card, fg_color="transparent")
+        result = {"card": card, "switch": sw, "detail": detail, "state": state}
+
+        def _sync():
+            on_now = bool(sw.get())
+            if state is not None:
+                state.configure(text="On" if on_now else "Off",
+                                text_color=theme.t("accent") if on_now
+                                else theme.t("text_subtle"))
+            if detail.winfo_manager():
+                detail.pack_forget()
+            if on_now:
+                detail.pack(fill="x", padx=16, pady=(0, 14))
+
+        sw.state_sync = _sync
+        _sync()
+        return result
 
     def _render_waveform(self):
         """Deterministic spectral bars - product motion stays in the pill."""
@@ -1025,58 +1069,74 @@ class DashboardWindow(ctk.CTk):
     # -------------------------------------------------------------------------
     # HANDLERS
     # -------------------------------------------------------------------------
-    def _on_chime_selected(self, value):
-        """Picking a sound sets the theme and previews it in one go."""
-        settings.update_settings({"sound_theme": value})
-        self._set_pill_group(self.chime_group, value)
-        sound.preview(value, "start")
-        self._refresh_chime_availability()
+    def _valid_theme(self, value: str) -> str:
+        allowed = {v for _, v in self.chime_options}
+        return value if value in allowed else "pop"
+
+    def _on_cue_theme(self, cue: str, value: str):
+        """Each cue keeps its own sound, so press and paste can differ."""
+        key = "sound_theme_prior" if cue == "prior" else "sound_theme_after"
+        settings.update_settings({key: value})
+        group = self.chime_prior_group if cue == "prior" else self.chime_after_group
+        self._set_pill_group(group, value)
+        sound.preview(value, "start" if cue == "prior" else "success")
 
     def _on_anim_selected(self, value):
         settings.update_settings({"indicator_animation": value})
         self._set_pill_group(self.anim_group, value)
+        if hasattr(self, "sw_indicator") and self.sw_indicator.winfo_exists():
+            if value == "off":
+                self.sw_indicator.deselect()
+            else:
+                self.sw_indicator.select()
+        self._sync_card_state(self.sw_indicator)
+
+    def _toggle_indicator(self):
+        on = bool(self.sw_indicator.get())
+        value = settings.indicator_animation
+        if not on:
+            settings.update_settings({"indicator_animation": "off"})
+        else:
+            settings.update_settings({
+                "indicator_animation": "wave_bars" if value == "off" else value})
+            self._set_pill_group(self.anim_group, settings.indicator_animation)
+        self._sync_card_state(self.sw_indicator)
 
     def _toggle_chime_prior(self):
         state = bool(self.sw_chime_prior.get())
         settings.update_settings({"sound_chime_prior": state})
-        self._refresh_chime_availability()
+        self._sync_card_state(self.sw_chime_prior)
+        self._refresh_cue_visibility()
         if state:
-            sound.preview(settings.sound_theme, "start")
+            sound.preview(settings.sound_theme_prior, "start")
         else:
             sound.play_stop()
 
     def _toggle_chime_after(self):
         state = bool(self.sw_chime_after.get())
         settings.update_settings({"sound_chime_after": state})
-        self._refresh_chime_availability()
+        self._sync_card_state(self.sw_chime_after)
+        self._refresh_cue_visibility()
         if state:
-            sound.preview(settings.sound_theme, "success")
+            sound.preview(settings.sound_theme_after, "success")
         else:
             sound.play_stop()
 
-    def _any_chime_enabled(self) -> bool:
-        return bool(settings.sound_chime_prior or settings.sound_chime_after)
-
-    def _refresh_chime_availability(self):
-        """Reconciles sound_feedback and dims the theme picker when muted."""
-        active = self._any_chime_enabled()
-        if settings.sound_feedback != active:
-            settings.update_settings({"sound_feedback": active})
-
-        theme_name = settings.sound_theme
-        if theme_name not in {v for _, v in self.chime_options}:
-            theme_name = "pop"
-            settings.update_settings({"sound_theme": theme_name})
-        self._set_pill_group(self.chime_group, theme_name)
-        self._paint_chime_availability(active)
-
-    def _paint_chime_availability(self, active: bool):
-        """Greys the sound picker out while both chimes are off."""
-        for btn in self.chime_group["buttons"].values():
+    def _sync_card_state(self, sw):
+        sync = getattr(sw, "state_sync", None)
+        if callable(sync):
             try:
-                btn.configure(state="normal" if active else "disabled")
+                sync()
             except Exception:
                 pass
+
+    def _refresh_cue_visibility(self):
+        """Keeps sound_feedback in step with the two cue switches."""
+        active = bool(settings.sound_chime_prior or settings.sound_chime_after)
+        if settings.sound_feedback != active:
+            settings.update_settings({"sound_feedback": active})
+        self._sync_card_state(self.sw_chime_prior)
+        self._sync_card_state(self.sw_chime_after)
 
     def _toggle_appearance(self):
         """Plays the switch first, then repaints the surface in the new theme.

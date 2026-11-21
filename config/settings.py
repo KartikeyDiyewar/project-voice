@@ -107,6 +107,16 @@ class Settings:
         return self.data.get("sound_theme", "pop").lower()
 
     @property
+    def sound_theme_prior(self) -> str:
+        """Sound used for the on-press cue, falling back to the shared theme."""
+        return self.data.get("sound_theme_prior", self.sound_theme).lower()
+
+    @property
+    def sound_theme_after(self) -> str:
+        """Sound used for the on-paste cue, falling back to the shared theme."""
+        return self.data.get("sound_theme_after", self.sound_theme).lower()
+
+    @property
     def indicator_animation(self) -> str:
         """Floating indicator animation: 'wave_bars', 'wave_dots', 'sine_wave'."""
         return self.data.get("indicator_animation", "wave_bars").lower()

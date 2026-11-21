@@ -169,7 +169,7 @@ class SoundFeedback:
         """Plays start-speaking chime on hotkey press (Prior)."""
         if not self.enabled or not settings.sound_chime_prior:
             return
-        theme = settings.sound_theme
+        theme = settings.sound_theme_prior
         pack = self._buffers.get(theme) or self._buffers["pop"]
         self._play_wav_async(pack["start"])
 
@@ -185,7 +185,7 @@ class SoundFeedback:
         """Plays text-injected success chime on finish (After)."""
         if not self.enabled or not settings.sound_chime_after:
             return
-        theme = settings.sound_theme
+        theme = settings.sound_theme_after
         pack = self._buffers.get(theme) or self._buffers["pop"]
         self._play_wav_async(pack["success"])
 
