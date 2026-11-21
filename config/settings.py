@@ -44,7 +44,8 @@ class Settings:
                     "llm_model": "qwen/qwen3.8-27b",
                     "temperature": 0.0
                 },
-                "sound_feedback": True
+                "sound_feedback": True,
+                "activation_mode": "hold"
             }
         try:
             with open(self.settings_file, "r", encoding="utf-8") as f:
@@ -60,6 +61,16 @@ class Settings:
     @property
     def fallback_hotkey(self) -> str:
         return self.data.get("fallback_hotkey", "f8").lower()
+
+    @property
+    def activation_mode(self) -> str:
+        """How the hotkey starts and stops recording.
+
+        hold  - recording runs only while the key is down (push-to-talk)
+        latch - press once to start, press again to stop (good for long dictation)
+        """
+        mode = self.data.get("activation_mode", "hold").lower()
+        return mode if mode in ("hold", "latch") else "hold"
 
     @property
     def sample_rate(self) -> int:

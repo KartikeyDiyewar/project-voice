@@ -46,6 +46,7 @@ class FloatingIndicator:
         self.anim_phase = 0.0
         self.anim_tick_count = 0
         self.is_animating = False
+        self.latch = False
         self._hwnd = None
         self._init_window()
 
@@ -254,7 +255,8 @@ class FloatingIndicator:
             # Dynamic moving wave dots on text
             dots_idx = (self.anim_tick_count // 14) % 4
             dots_str = ["", ".", ". .", ". . ."][dots_idx]
-            self.text_label.configure(text=f"Listening {dots_str}", text_color=theme.on_ink("on_ink"))
+            word = "Recording" if self.latch else "Listening"
+            self.text_label.configure(text=f"{word} {dots_str}", text_color=theme.on_ink("on_ink"))
 
         elif self.current_state == "processing":
             if not getattr(self, "_bar_items", None):
@@ -280,14 +282,17 @@ class FloatingIndicator:
     # -------------------------------------------------------------------------
     # STATE TRANSITIONS
     # -------------------------------------------------------------------------
-    def show_listening(self):
-        """Called when user holds Ctrl+Space."""
+    def show_listening(self, latch: bool = False):
+        """Shows the listening pill. latch=True means it runs until pressed again."""
         if not self.root:
             return
+        self.latch = bool(latch)
         def _apply():
             self.current_state = "listening"
             self.container.configure(border_color=theme.on_ink("accent"))
-            self.sub_label.configure(text=f"[ {settings.hotkey.upper()} ]", text_color=theme.on_ink("on_ink_muted"))
+            self.sub_label.configure(
+                text="Press again to stop" if self.latch else f"[ {settings.hotkey.upper()} ]",
+                text_color=theme.on_ink("on_ink_muted"))
             self._start_animation()
             self._show_no_activate()
         self.root.after(0, _apply)

@@ -30,10 +30,19 @@ def is_physical_key_down(vk_code: int) -> bool:
     return bool(user32.GetAsyncKeyState(vk_code) & 0x8000)
 
 class HotkeyManager:
+    """Watches for the configured chord and drives start / stop callbacks.
+
+    Two activation modes:
+      hold  - the chord must stay down; releasing stops (push-to-talk)
+      latch - one press starts, the next press stops, so long dictation does not
+              depend on keeping a key held
+    """
+
     def __init__(self, on_start, on_stop):
         self.on_start_callback = on_start
         self.on_stop_callback = on_stop
         self.is_active = False
+        self.latched = False
 
         self.primary_hotkey_str = settings.hotkey.lower()
         self.fallback_hotkey_str = settings.fallback_hotkey.lower()
@@ -50,6 +59,7 @@ class HotkeyManager:
             self.fallback_hotkey_str = settings.fallback_hotkey.lower()
             self.currently_pressed.clear()
             self.is_active = False
+            self.latched = False
 
         if was_active and self.on_stop_callback:
             try:
@@ -106,14 +116,30 @@ class HotkeyManager:
 
     def _on_press(self, key):
         with self.lock:
+            already_down = key in self.currently_pressed
             self.currently_pressed.add(key)
+
+            # Auto-repeat fires press events while a key is held. Only the first
+            # one counts, otherwise latch mode would stop the moment it started.
+            if already_down:
+                return
 
             is_primary = self._is_combination_down(self.primary_hotkey_str)
             is_fallback = self._is_combination_down(self.fallback_hotkey_str)
+            if not (is_primary or is_fallback):
+                return
 
-            if (is_primary or is_fallback) and not self.is_active:
+            if settings.activation_mode == "latch":
+                if self.is_active:
+                    self.is_active = False
+                    self.latched = False
+                    threading.Thread(target=self.on_stop_callback, daemon=True).start()
+                else:
+                    self.is_active = True
+                    self.latched = True
+                    threading.Thread(target=self.on_start_callback, daemon=True).start()
+            elif not self.is_active:
                 self.is_active = True
-                # Dispatch start in worker thread so the hook returns instantaneously (<1ms)
                 threading.Thread(target=self.on_start_callback, daemon=True).start()
 
     def _on_release(self, key):
@@ -121,16 +147,29 @@ class HotkeyManager:
             if key in self.currently_pressed:
                 self.currently_pressed.remove(key)
 
-            if self.is_active:
-                is_primary = self._is_combination_down(self.primary_hotkey_str)
-                is_fallback = self._is_combination_down(self.fallback_hotkey_str)
+            if not self.is_active or self.latched:
+                return
 
-                # Stop when the combination is released
-                if not (is_primary or is_fallback):
-                    self.is_active = False
-                    self.currently_pressed.clear()  # Clear stuck keys on release
-                    # CRITICAL: Run stop callback in a background thread so we NEVER sleep on the OS hook thread!
-                    threading.Thread(target=self.on_stop_callback, daemon=True).start()
+            # Hold mode: stop once the chord is no longer fully down.
+            is_primary = self._is_combination_down(self.primary_hotkey_str)
+            is_fallback = self._is_combination_down(self.fallback_hotkey_str)
+            if not (is_primary or is_fallback):
+                self.is_active = False
+                self.currently_pressed.clear()
+                threading.Thread(target=self.on_stop_callback, daemon=True).start()
+
+    def force_stop(self):
+        """Ends a latched recording, e.g. when the dashboard closes."""
+        with self.lock:
+            if not self.is_active:
+                return
+            self.is_active = False
+            self.latched = False
+            self.currently_pressed.clear()
+        try:
+            self.on_stop_callback()
+        except Exception:
+            pass
 
     def start(self):
         """Starts the global keyboard listener in a background thread."""

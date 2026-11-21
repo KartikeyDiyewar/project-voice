@@ -162,16 +162,25 @@ class ProjectVoiceApp:
         print("🔄 Reloading API services and hotkey configuration...")
         self.stt.reload_client()
         self.llm.reload_client()
+        # Stop any running dictation first: the chord or the mode may be about
+        # to change underneath it.
+        try:
+            self.hotkey_mgr.force_stop()
+        except Exception:
+            pass
         self.hotkey_mgr.reload_keys()
 
     def on_hotkey_down(self):
-        """Called when user presses and holds Ctrl+Space (or F8)."""
+        """Starts recording. In latch mode this also fires on the stop press."""
+        if self.recorder.is_recording:
+            return
         self.current_hwnd = user32.GetForegroundWindow()
         self.current_context = get_active_window_title()
         sound.play_start()
         self.recorder.start()
-        self.indicator.show_listening()
-        print("\n🎙️ [LISTENING...] Speak in English or Hinglish...")
+        self.indicator.show_listening(latch=settings.activation_mode == "latch")
+        mode = "until you press again" if settings.activation_mode == "latch" else "hold the key"
+        print(f"\n🎙️ [LISTENING...] Speak in English or Hinglish (recording {mode})...")
 
     def on_hotkey_up(self):
         """Called when user releases Ctrl+Space (or F8)."""

@@ -33,6 +33,7 @@ from utils.sound_feedback import sound
 from ui.icons import get_icon
 from ui import theme
 from ui.daynight_toggle import DayNightToggle, DURATION as DN_DURATION
+from ui.hotkey_field import HotkeyField, pretty as pretty_chord
 
 DURATION_MS = DN_DURATION * 1000
 
@@ -795,43 +796,154 @@ class DashboardWindow(ctk.CTk):
     def _build_shortcuts_page(self):
         page = self.page_shortcuts
         self._masthead(page, "Shortcuts",
-                       "One push-to-talk chord that works in every Windows application")
+                       "Bind your own key, and choose how recording starts and stops")
         ctk.CTkFrame(page, fg_color="transparent", height=24).pack(fill="x")
 
-        self._section_label(page, "Primary shortcut", top=0)
+        # ---- key binding ------------------------------------------------
+        self._section_label(page, "Your key", top=0)
         self._hairline(page, pady=(0, 14))
 
-        row = ctk.CTkFrame(page, fg_color="transparent")
-        row.pack(fill="x", pady=(0, 22))
+        bind_row = ctk.CTkFrame(page, fg_color="transparent")
+        bind_row.pack(fill="x", pady=(0, 8))
 
-        self.hk_picker = ctk.CTkOptionMenu(
-            row, values=["ctrl+space", "f8", "alt_r", "ctrl+shift+space"],
-            width=190, height=34, font=theme.font(12),
-            fg_color=theme.t("surface_sunk"),
-            button_color=theme.t("surface_sunk"),
-            button_hover_color=theme.t("border"),
-            text_color=theme.t("text"),
-            dropdown_fg_color=theme.t("surface"),
-            dropdown_hover_color=theme.t("surface_sunk"),
-            dropdown_text_color=theme.t("text"),
-            command=self._on_hotkey_change)
-        self.hk_picker.set(settings.hotkey)
-        self.hk_picker.pack(side="left")
+        self.hotkey_field = HotkeyField(
+            bind_row, settings.hotkey, self._on_hotkey_captured,
+            bg=theme.t("canvas"))
+        self.hotkey_field.pack(side="left")
 
-        ctk.CTkLabel(row, text=f"Fallback: {settings.fallback_hotkey.upper()}",
-                     font=theme.font(11), text_color=theme.t("text_subtle")).pack(side="left", padx=16)
+        ctk.CTkLabel(
+            bind_row, text="Click the field, then press any key or chord.\n"
+                           "Esc cancels, Backspace restores Ctrl + Space.",
+            font=theme.font(11), text_color=theme.t("text_subtle"),
+            justify="left").pack(side="left", padx=16)
 
+        self.hk_status = ctk.CTkLabel(
+            page, text="", font=theme.font(11, "bold"),
+            text_color=theme.t("text_muted"))
+        self.hk_status.pack(anchor="w", pady=(0, 4))
+
+        ctk.CTkLabel(
+            page, text=f"Fallback key {pretty_chord(settings.fallback_hotkey)} "
+                       f"stays active if another app claims your chord.",
+            font=theme.font(11), text_color=theme.t("text_subtle")
+        ).pack(anchor="w", pady=(0, 22))
+
+        # ---- activation mode --------------------------------------------
+        self._section_label(page, "How recording starts", top=0)
+        self._hairline(page, pady=(0, 14))
+
+        modes = ctk.CTkFrame(page, fg_color="transparent")
+        modes.pack(fill="x", pady=(0, 22))
+        modes.grid_columnconfigure(0, weight=1, uniform="mode")
+        modes.grid_columnconfigure(1, weight=1, uniform="mode")
+
+        self.mode_cards = {}
+        for col, (value, title, detail) in enumerate((
+            ("hold", "Hold to talk", "Recording runs while you hold the key and "
+                                     "stops the moment you let go."),
+            ("latch", "Press to start, press again to stop",
+             "Recording keeps running hands-free, so long passages are not cut short."),
+        )):
+            self.mode_cards[value] = self._mode_card(
+                modes, col, value, title, detail)
+
+        self._refresh_mode_cards()
+
+        # ---- walkthrough -------------------------------------------------
         self._section_label(page, "Walkthrough")
         self._hairline(page, pady=(0, 14))
+        self._build_walkthrough(page)
 
-        steps = [
-            ("01", "Focus any app", "Chrome, Word, WhatsApp, VS Code, Slack, Notion."),
-            ("02", "Hold the shortcut", "A slim pill appears above your taskbar."),
-            ("03", "Speak naturally", "Hindi, English, or a mix. No script switching."),
-            ("04", "Release", "Cleaned text is pasted into the window you started in."),
-        ]
+    def _mode_card(self, parent, column, value, title, detail):
+        card = ctk.CTkFrame(parent, fg_color=theme.t("surface"), corner_radius=12,
+                            border_width=1, border_color=theme.t("border"),
+                            cursor="hand2")
+        card.grid(row=0, column=column, sticky="nsew",
+                  padx=(0, 10) if column == 0 else (10, 0))
+
+        inner = ctk.CTkFrame(card, fg_color="transparent")
+        inner.pack(fill="both", expand=True, padx=16, pady=14)
+
+        head = ctk.CTkFrame(inner, fg_color="transparent")
+        head.pack(fill="x")
+
+        dot = ctk.CTkCanvas(head, width=16, height=16, bg=theme.t("surface"),
+                            highlightthickness=0, bd=0)
+        dot.pack(side="left", padx=(0, 9))
+        title_lbl = ctk.CTkLabel(head, text=title, font=theme.font(12, "bold"),
+                                 text_color=theme.t("text"), anchor="w",
+                                 justify="left", wraplength=230)
+        title_lbl.pack(side="left", fill="x", expand=True)
+
+        detail_lbl = ctk.CTkLabel(inner, text=detail, font=theme.font(11),
+                                  text_color=theme.t("text_muted"), anchor="w",
+                                  justify="left", wraplength=250)
+        detail_lbl.pack(anchor="w", pady=(6, 0))
+
+        store = {"card": card, "dot": dot, "title": title_lbl, "detail": detail_lbl,
+                 "value": value}
+        for widget in (card, inner, head, title_lbl, detail_lbl):
+            widget.bind("<Button-1>", lambda _e, v=value: self._on_mode_selected(v))
+        return store
+
+    def _refresh_mode_cards(self):
+        active = settings.activation_mode
+        for value, store in self.mode_cards.items():
+            selected = value == active
+            store["card"].configure(
+                border_color=theme.t("accent") if selected else theme.t("border"),
+                border_width=2 if selected else 1,
+                fg_color=theme.t("accent_soft") if selected else theme.t("surface"))
+            store["dot"].configure(bg=store["card"].cget("fg_color"))
+
+            d = store["dot"]
+            d.delete("all")
+            if selected:
+                d.create_oval(1, 1, 15, 15, outline=theme.t("accent"), width=2)
+                d.create_oval(5, 5, 11, 11, fill=theme.t("accent"), outline="")
+            else:
+                d.create_oval(1, 1, 15, 15, outline=theme.t("border_strong"), width=2)
+            store["title"].configure(
+                text_color=theme.t("accent_text") if selected else theme.t("text"))
+
+    def _on_mode_selected(self, value):
+        if value == settings.activation_mode:
+            return
+        settings.update_settings({"activation_mode": value})
+        self._refresh_mode_cards()
+        if getattr(self, "walkthrough_box", None) is not None:
+            self._fill_walkthrough()
+        if self.on_reinit_services:
+            self.on_reinit_services()
+
+    def _build_walkthrough(self, page):
+        self.walkthrough_box = ctk.CTkFrame(page, fg_color="transparent")
+        self.walkthrough_box.pack(fill="x")
+        self._fill_walkthrough()
+
+    def _fill_walkthrough(self):
+        """Wording follows the chosen mode: hold and latch end differently."""
+        box = self.walkthrough_box
+        for child in box.winfo_children():
+            child.destroy()
+
+        if settings.activation_mode == "latch":
+            steps = [
+                ("01", "Focus any app", "Chrome, Word, WhatsApp, VS Code, Slack, Notion."),
+                ("02", "Press your key once", "Recording starts and the pill stays visible."),
+                ("03", "Speak at your pace", "Hindi, English, or a mix. Take as long as you need."),
+                ("04", "Press the key again", "Recording stops and the cleaned text is pasted."),
+            ]
+        else:
+            steps = [
+                ("01", "Focus any app", "Chrome, Word, WhatsApp, VS Code, Slack, Notion."),
+                ("02", "Hold your key", "A slim pill appears above your taskbar."),
+                ("03", "Speak naturally", "Hindi, English, or a mix. No script switching."),
+                ("04", "Release", "Cleaned text is pasted into the window you started in."),
+            ]
+
         for num, title, detail in steps:
-            step = ctk.CTkFrame(page, fg_color="transparent")
+            step = ctk.CTkFrame(box, fg_color="transparent")
             step.pack(fill="x", pady=7)
             ctk.CTkLabel(step, text=num, font=theme.mono(11, "bold"), width=30,
                          text_color=theme.t("accent"), anchor="w").pack(side="left", anchor="n")
@@ -842,15 +954,23 @@ class DashboardWindow(ctk.CTk):
             ctk.CTkLabel(body, text=detail, font=theme.font(12),
                          text_color=theme.t("text_muted")).pack(anchor="w", pady=(1, 0))
 
-    def _on_hotkey_change(self, choice):
-        settings.update_settings({"hotkey": choice})
+    def _on_hotkey_captured(self, chord):
+        """A new chord was recorded in the field."""
+        settings.update_settings({"hotkey": chord})
         if self.on_reinit_services:
             self.on_reinit_services()
+
+        # Keep the Home page keycaps and the pill badge in step.
         k1, k2 = self._key_labels()
         if getattr(self, "k1_cap", None) is not None and self.k1_cap.winfo_exists():
             self.k1_cap.configure(text=k1)
         if getattr(self, "k2_cap", None) is not None and self.k2_cap.winfo_exists():
             self.k2_cap.configure(text=k2)
+
+        if getattr(self, "hk_status", None) is not None and self.hk_status.winfo_exists():
+            self.hk_status.configure(
+                text=f"Saved · {pretty_chord(chord)} now starts dictation",
+                text_color=theme.t("success"))
 
     # -------------------------------------------------------------------------
     # SETTINGS
