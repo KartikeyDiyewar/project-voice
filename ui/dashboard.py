@@ -305,16 +305,36 @@ class DashboardWindow(ctk.CTk):
                      text_color=theme.t("text_subtle")).pack(anchor="w", pady=(10, 0))
 
     def _draw_brand_mark(self, canvas):
-        """Crisp mic glyph on a filled accent tile."""
-        canvas.create_polygon(
-            [7, 0, 23, 0, 30, 7, 30, 23, 23, 30, 7, 30, 0, 23, 0, 7],
-            smooth=False, fill=theme.t("accent"), outline="")
-        canvas.create_oval(11, 7, 19, 18, fill=theme.t("surface"), outline="")
-        canvas.create_rectangle(11, 13, 19, 19, fill=theme.t("surface"), outline="")
-        canvas.create_arc(8, 13, 22, 24, start=180, extent=180,
-                          style="arc", outline=theme.t("surface"), width=2)
-        canvas.create_line(15, 24, 15, 27, fill=theme.t("surface"), width=2)
-        canvas.create_line(11, 27, 19, 27, fill=theme.t("surface"), width=2)
+        """Accent tile with the mic glyph, matching the app icon's proportions.
+
+        The canvas is 30x30, so the icon's 100-unit grid is scaled by 0.30 and
+        every stroke uses a 1px width - anything heavier merges the capsule and
+        cradle into a blob at this size.
+        """
+        w = h = 30
+        r = 7
+
+        # rounded tile
+        canvas.create_rectangle(r, 0, w - r, h, fill=theme.t("accent"), outline="")
+        canvas.create_rectangle(0, r, w, h - r, fill=theme.t("accent"), outline="")
+        for cx, cy, start in ((r, r, 90), (w - r, r, 0), (w - r, h - r, 270), (r, h - r, 180)):
+            canvas.create_arc(cx - r, cy - r, cx + r, cy + r, start=start, extent=90,
+                              style="pieslice", fill=theme.t("accent"), outline="")
+
+        def s(v):
+            return v * w / 100.0
+
+        # capsule
+        canvas.create_oval(s(39), s(17), s(61), s(47),
+                           fill=theme.t("surface"), outline="")
+        # cradle: a shallow arc that stops above the stem
+        canvas.create_arc(s(28), s(30), s(72), s(62), start=200, extent=140,
+                          style="arc", outline=theme.t("surface"), width=1)
+        # stem + base
+        canvas.create_line(s(50), s(58), s(50), s(72),
+                           fill=theme.t("surface"), width=1)
+        canvas.create_line(s(38), s(74), s(62), s(74),
+                           fill=theme.t("surface"), width=1)
 
     def _make_nav_row(self, parent, name, icon_key):
         row = ctk.CTkFrame(parent, fg_color="transparent", height=38)
@@ -388,6 +408,43 @@ class DashboardWindow(ctk.CTk):
                 frame.pack(fill="both", expand=True, padx=(40, 36), pady=(30, 28))
             else:
                 frame.pack_forget()
+
+        self._fade_in_page(self.pages[page_name])
+
+    def _fade_in_page(self, frame, steps=5, delay=14):
+        """Eases the page in so switching tabs does not snap.
+
+        Tk has no opacity for child widgets, so the page is briefly inset and
+        settles into place - a small, cheap motion that reads as a transition.
+        """
+        try:
+            frame.pack_configure(pady=(30 + 6, 28))
+        except Exception:
+            return
+
+        state = {"step": 0}
+
+        def _tick():
+            state["step"] += 1
+            t = state["step"] / steps
+            eased = 1 - (1 - t) ** 2
+            offset = round(6 * (1 - eased))
+            try:
+                if not frame.winfo_exists() or self.active_tab != self._page_name(frame):
+                    return
+                frame.pack_configure(pady=(30 + offset, 28))
+            except Exception:
+                return
+            if state["step"] < steps:
+                self.after(delay, _tick)
+
+        self.after(delay, _tick)
+
+    def _page_name(self, frame) -> str:
+        for name, f in self.pages.items():
+            if f is frame:
+                return name
+        return ""
 
     # -------------------------------------------------------------------------
     # SHARED BUILDING BLOCKS

@@ -18,22 +18,31 @@ class TrayIcon:
         self.icon = None
 
     def _create_icon_image(self, color=None):
-        """Generates a clean 64x64 microphone icon in the brand accent."""
-        color = color or theme.on_ink("accent")
-        width = 64
-        height = 64
-        image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(image)
+        """Tray icon: accent disc with the mic glyph, drawn 4x then downsampled.
 
-        # Rounded mic capsule
-        draw.rounded_rectangle([22, 10, 42, 38], radius=10, fill=color)
-        # Mic stand arc
-        draw.arc([16, 22, 48, 46], start=0, end=180, fill=color, width=4)
-        # Base line
-        draw.line([32, 46, 32, 54], fill=color, width=4)
-        draw.line([22, 54, 42, 54], fill=color, width=4)
+        Tray icons render at 16-20px, so a bare outline mic disappears. A filled
+        accent disc keeps the mark readable at that size.
+        """
+        accent = color or theme.on_ink("accent")
+        size, ss = 64, 4
+        big = size * ss
+        image = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+        d = ImageDraw.Draw(image)
 
-        return image
+        d.ellipse([0, 0, big - 1, big - 1], fill=accent)
+
+        s = big / 100.0
+
+        def box(x0, y0, x1, y1):
+            return [x0 * s, y0 * s, x1 * s, y1 * s]
+
+        white = (255, 255, 255, 255)
+        d.rounded_rectangle(box(40, 24, 60, 52), radius=10 * s, fill=white)
+        d.arc(box(30, 36, 70, 68), start=20, end=160, fill=white, width=int(6 * s))
+        d.rounded_rectangle(box(47, 64, 53, 74), radius=3 * s, fill=white)
+        d.rounded_rectangle(box(37, 73, 63, 79), radius=3 * s, fill=white)
+
+        return image.resize((size, size), Image.LANCZOS)
 
     def _open_dashboard(self):
         if self.on_open_dashboard:
