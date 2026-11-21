@@ -129,6 +129,8 @@ class DashboardWindow(ctk.CTk):
 
         self.on_reinit_services = on_reinit_services
         self.on_quit = on_quit
+        # Set by app.py so the key field can pause the global hook while recording.
+        self._hotkey_manager = None
 
         self.title("Project Voice")
         self.resizable(True, True)
@@ -808,12 +810,14 @@ class DashboardWindow(ctk.CTk):
 
         self.hotkey_field = HotkeyField(
             bind_row, settings.hotkey, self._on_hotkey_captured,
-            bg=theme.t("canvas"))
+            bg=theme.t("canvas"),
+            on_capture_start=self._pause_hotkeys,
+            on_capture_end=self._resume_hotkeys)
         self.hotkey_field.pack(side="left")
 
         ctk.CTkLabel(
-            bind_row, text="Click the field, then press any key or chord.\n"
-                           "Esc cancels, Backspace restores Ctrl + Space.",
+            bind_row, text="Click the field, press any key or chord,\n"
+                           "then press ✓ to save. Esc cancels.",
             font=theme.font(11), text_color=theme.t("text_subtle"),
             justify="left").pack(side="left", padx=16)
 
@@ -954,8 +958,30 @@ class DashboardWindow(ctk.CTk):
             ctk.CTkLabel(body, text=detail, font=theme.font(12),
                          text_color=theme.t("text_muted")).pack(anchor="w", pady=(1, 0))
 
+    def _pause_hotkeys(self):
+        """Stops the global hook while a chord is being recorded.
+
+        Otherwise pressing Ctrl+Space in the field would also start a dictation,
+        and the recorder would fight the app for the same keys.
+        """
+        manager = getattr(self, "_hotkey_manager", None)
+        if manager is not None:
+            try:
+                manager.force_stop()
+                manager.stop()
+            except Exception:
+                pass
+
+    def _resume_hotkeys(self):
+        manager = getattr(self, "_hotkey_manager", None)
+        if manager is not None:
+            try:
+                manager.start()
+            except Exception:
+                pass
+
     def _on_hotkey_captured(self, chord):
-        """A new chord was recorded in the field."""
+        """Called once, when the tick is pressed in the key field."""
         settings.update_settings({"hotkey": chord})
         if self.on_reinit_services:
             self.on_reinit_services()

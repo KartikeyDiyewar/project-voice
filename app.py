@@ -136,6 +136,8 @@ class ProjectVoiceApp:
             on_start=self.on_hotkey_down,
             on_stop=self.on_hotkey_up
         )
+        # Let the dashboard pause the global hook while a new chord is recorded.
+        self.dashboard._hotkey_manager = self.hotkey_mgr
 
         # 5. System Tray Icon (Runs detached in background thread)
         self.tray = TrayIcon(
