@@ -32,6 +32,7 @@ from config.settings import settings
 from utils.sound_feedback import sound
 from ui.icons import get_icon
 from ui import theme
+from ui.daynight_toggle import DayNightToggle
 
 ctk.set_default_color_theme("blue")
 ctk.set_appearance_mode(theme.mode())
@@ -292,7 +293,7 @@ class DashboardWindow(ctk.CTk):
 
         theme_row = ctk.CTkFrame(footer, fg_color="transparent")
         theme_row.pack(fill="x")
-        self.theme_switch = self._switch(
+        self.theme_switch = self._daynight_switch(
             theme_row, theme.mode() == "dark", self._toggle_appearance,
             bg=theme.t("sidebar"))
         self.theme_switch.pack(side="left", padx=(0, 9))
@@ -412,6 +413,11 @@ class DashboardWindow(ctk.CTk):
         if on:
             sw.select()
         return sw
+
+    def _daynight_switch(self, parent, on: bool, command, bg=None):
+        """The stroke-based day/night control used for the theme switch."""
+        return DayNightToggle(parent, value=on, command=command,
+                              bg=bg or theme.t("canvas"), width=64, height=32)
 
     def _pill_group(self, parent, options, active_value, on_change, side="left"):
         """Mutually exclusive pills; the selected one is the only filled chip."""
@@ -805,7 +811,7 @@ class DashboardWindow(ctk.CTk):
                                    "for this session only",
                      font=theme.font(11), text_color=theme.t("text_subtle")).pack(anchor="w", pady=(1, 0))
 
-        self.settings_theme_switch = self._switch(
+        self.settings_theme_switch = self._daynight_switch(
             appearance_row, theme.mode() == "dark", self._toggle_appearance)
         self.settings_theme_switch.pack(side="right", anchor="center")
 
