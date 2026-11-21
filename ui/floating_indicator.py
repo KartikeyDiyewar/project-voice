@@ -30,6 +30,15 @@ SWP_NOSIZE = 0x0001
 SWP_SHOWWINDOW = 0x0040
 HWND_TOPMOST = -1
 
+# Colour used as the window's transparent key. Windows colour-keying only
+# removes exact matches, so the anti-aliased pixels along the pill's rounded
+# corners keep a blend of this colour and the border. A near-ink tone therefore
+# reads as a soft dark edge, while a saturated key would leave a visible fringe.
+CHROMA_KEY = "#2B2622"
+GWL_STYLE = -16
+WS_EX_LAYERED = 0x00080000
+LWA_COLORKEY = 0x00000001
+
 class FloatingIndicator:
     def __init__(self, master=None):
         self.master = master
@@ -46,7 +55,6 @@ class FloatingIndicator:
         self.root.title("Project Voice Pill")
         self.root.overrideredirect(True)        # Borderless
         self.root.attributes("-topmost", True)   # Always on top
-        self.root.attributes("-alpha", 0.96)     # Modern sleek glass effect
 
         # Dimensions & bottom-center positioning (Pill layout: 300x46)
         width = 300
@@ -57,7 +65,14 @@ class FloatingIndicator:
         y = screen_h - 110  # Positioned comfortably above Windows taskbar
 
         self.root.geometry(f"{width}x{height}+{x}+{y}")
-        self.root.configure(fg_color=theme.on_ink("ink"))
+        # The window itself is painted in the chroma key so only the pill below
+        # is visible; without this the dark window background shows as a
+        # rectangle around the rounded corners.
+        self.root.configure(fg_color=CHROMA_KEY)
+        try:
+            self.root.wm_attributes("-transparentcolor", CHROMA_KEY)
+        except Exception:
+            pass
 
         # Container frame styled like a rounded pill
         self.container = ctk.CTkFrame(
@@ -67,7 +82,7 @@ class FloatingIndicator:
             border_color=theme.on_ink("ink_border"),
             corner_radius=23
         )
-        self.container.pack(fill="both", expand=True, padx=1, pady=1)
+        self.container.pack(fill="both", expand=True)
 
         # Dynamic Sound Wave Canvas Visualizer
         self.canvas = tk.Canvas(
@@ -130,6 +145,20 @@ class FloatingIndicator:
                 )
             except Exception:
                 pass
+        self._apply_transparency(hwnd)
+
+    def _apply_transparency(self, hwnd):
+        """Makes the chroma-key colour fully transparent on the layered window."""
+        if not hwnd:
+            return
+        try:
+            r = int(CHROMA_KEY[1:3], 16)
+            g = int(CHROMA_KEY[3:5], 16)
+            b = int(CHROMA_KEY[5:7], 16)
+            colorref = r | (g << 8) | (b << 16)
+            user32.SetLayeredWindowAttributes(hwnd, colorref, 0, LWA_COLORKEY)
+        except Exception:
+            pass
 
     def _show_no_activate(self):
         """Shows window without stealing cursor/caret focus."""
