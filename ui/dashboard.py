@@ -1243,6 +1243,9 @@ class DashboardWindow(ctk.CTk):
         except Exception:
             pass
         self._rebuild_ui()
+        # The chooser can be dismissed while the dashboard is still hidden; make
+        # sure closing it never leaves the app with no visible window.
+        self.after(30, self.show_window)
 
     # -------------------------------------------------------------------------
     # HANDLERS
