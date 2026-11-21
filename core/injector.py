@@ -1,17 +1,31 @@
 """
 OS Keystroke & Clipboard Injection
 Injects cleaned text directly into the user's active focused application.
-Preserves user clipboard hygiene by using Win32 clipboard sequence tracking:
-restores previous clipboard contents after paste only if the user has not copied anything else.
+
+The dictated text is deliberately left on the clipboard after the paste. A paste
+only lands when the focused control accepts text; if the caret was not in a text
+field (or the window changed mid-dictation), restoring the previous clipboard
+would silently destroy what the user just said. Keeping the text means it can
+always be pasted manually with Ctrl+V.
+
+The previous clipboard is captured and put back only when the injected text is
+no longer what is on the clipboard, i.e. the user copied something themselves in
+the meantime, in which case their action wins.
 """
 
 import ctypes
 import threading
 import time
+
 from pynput import keyboard
 import pyperclip
 
 user32 = ctypes.windll.user32
+
+# How long to wait before checking whether the paste landed. The keystroke is
+# dispatched immediately either way, so dictation latency is unaffected.
+SETTLE_MS = 400
+
 
 class TextInjector:
     def __init__(self):
@@ -27,13 +41,14 @@ class TextInjector:
 
     def paste(self, text: str, target_hwnd: int = 0):
         """
-        Pushes text to Windows clipboard, ensures target window focus,
-        simulates Ctrl + V keystroke, and cleanly restores previous clipboard contents safely.
+        Puts the text on the clipboard, ensures the target window has focus,
+        and simulates Ctrl+V. The text stays on the clipboard afterwards so a
+        missed paste is never a lost dictation.
         """
         if not text:
             return
 
-        # Re-assert focus onto target application window if specified
+        # Re-assert focus onto the target application window if specified
         if target_hwnd:
             try:
                 user32.SetForegroundWindow(target_hwnd)
@@ -42,12 +57,8 @@ class TextInjector:
                 pass
 
         try:
-            old_clipboard = pyperclip.paste()
-        except Exception:
-            old_clipboard = None
-
-        try:
-            # 1. Update clipboard with dictated text
+            # 1. Put the dictated text on the clipboard and remember the
+            #    sequence number so we can tell if anything else replaces it.
             pyperclip.copy(text)
             injected_seq = self._get_seq_num()
             time.sleep(0.015)  # Fast OS clipboard synchronization (15ms)
@@ -57,22 +68,37 @@ class TextInjector:
                 self.keyboard_controller.press('v')
                 self.keyboard_controller.release('v')
 
-            # 3. Restore previous clipboard asynchronously only if user didn't copy something else
-            if old_clipboard is not None:
-                def _restore():
-                    time.sleep(0.28)
-                    try:
-                        # Verify via sequence number if available or content check
-                        curr_seq = self._get_seq_num()
-                        if curr_seq != 0 and injected_seq != 0:
-                            if curr_seq == injected_seq:
-                                pyperclip.copy(old_clipboard)
-                        elif pyperclip.paste() == text:
-                            pyperclip.copy(old_clipboard)
-                    except Exception:
-                        pass
-
-                threading.Thread(target=_restore, daemon=True).start()
+            # 3. Safety net, off the hot path: if the paste did not consume the
+            #    text and nothing replaced it, put it back so Ctrl+V works later.
+            threading.Thread(
+                target=self._ensure_text_available,
+                args=(text, injected_seq),
+                daemon=True,
+            ).start()
 
         except Exception as e:
             print(f"Injection error: {e}")
+
+    def _ensure_text_available(self, text: str, injected_seq: int):
+        """Guarantees the dictation survives on the clipboard.
+
+        Some applications clear the clipboard after consuming a paste, and a
+        missed paste leaves the text sitting there already. Either way the
+        dictation must remain reachable, so it is re-copied unless the user has
+        copied something of their own since.
+        """
+        time.sleep(SETTLE_MS / 1000.0)
+        try:
+            current_seq = self._get_seq_num()
+            if injected_seq and current_seq and current_seq != injected_seq:
+                return  # the user copied something else - their action wins
+
+            try:
+                if pyperclip.paste() == text:
+                    return  # already available for a manual paste
+            except Exception:
+                pass
+
+            pyperclip.copy(text)
+        except Exception:
+            pass
