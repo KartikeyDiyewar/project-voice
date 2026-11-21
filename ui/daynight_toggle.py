@@ -18,7 +18,7 @@ from ui import theme
 
 TRACK_WIDTH = 3.2
 INSET_RATIO = 0.09
-CORE_RATIO = 0.40
+CORE_RATIO = 0.50
 DURATION = 0.55
 TICK_MS = 16
 SAMPLES = 44
@@ -241,28 +241,24 @@ class DayNightToggle(tk.Canvas):
     def _draw_onoff_glyph(self, cx, cy, r_core, colour, p):
         """Ring (off) collapses to a dot while a vertical bar (on) grows.
 
-        p=0 -> ring at full size, p=1 -> bar at full height. Both cross-fade in
-        the middle, which reads as one glyph turning into the other.
+        Both are drawn at full opacity and swap size rather than cross-fading,
+        because at 64px a faded 3px ring is simply not visible.
         """
         s = self.scale
-        line = 2.6 * s
 
-        # ring shrinks and fades out
-        ring_scale = 1.0 - 0.70 * p
-        ring_alpha = 1.0 - min(1.0, p / 0.65)
-        if ring_alpha > 0.02:
-            rr = r_core * 0.86 * ring_scale
-            shade = _blend(self._bg, colour, ring_alpha)
+        # ring: full size when OFF, shrinks away when ON
+        ring = 1.0 - min(1.0, p / 0.7)
+        if ring > 0.05:
+            rr = r_core * 0.80 * (0.35 + 0.65 * ring)
             self.create_oval(cx - rr, cy - rr, cx + rr, cy + rr,
-                             outline=shade, width=line)
+                             outline=colour, width=3.0 * s)
 
-        # bar grows in height and fades in
-        bar = min(1.0, max(0.0, (p - 0.35) / 0.65))
-        if bar > 0.02:
-            half = r_core * 0.95 * bar
-            shade = _blend(self._bg, colour, bar)
-            self.create_line(cx, cy - half, cx, cy + half, fill=shade,
-                             width=3.2 * s, capstyle=tk.ROUND)
+        # bar: grows from a dot to a full vertical stroke when ON
+        bar = max(0.0, min(1.0, (p - 0.3) / 0.7))
+        if bar > 0.05:
+            half = r_core * 0.92 * bar
+            self.create_line(cx, cy - half, cx, cy + half, fill=colour,
+                             width=3.4 * s, capstyle=tk.ROUND)
 
     def _render(self):
         try:
@@ -283,9 +279,13 @@ class DayNightToggle(tk.Canvas):
         self.create_line(*self._track_flat, fill=track_col, width=stroke,
                          capstyle=tk.ROUND, joinstyle=tk.ROUND)
 
-        # Lit half is the right side in day and the left side at night, so the
-        # arc orbits a full half-turn as the switch moves.
-        start = 0.5 * p
+        # Lit half orbits a half-turn. Direction follows the reference: the theme
+        # switch lights the left half in dark mode, the on/off switch lights the
+        # right half when ON.
+        if self.kind == "onoff":
+            start = 0.5 - 0.5 * p      # ON -> right half
+        else:
+            start = 0.5 * p            # dark -> left half
         lit_pts = _slice(pts, fracs, start, start + 0.5)
         if len(lit_pts) > 1:
             self._stroke(lit_pts, lit_col, stroke)

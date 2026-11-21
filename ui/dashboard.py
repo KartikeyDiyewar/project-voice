@@ -627,6 +627,23 @@ class DashboardWindow(ctk.CTk):
 
         sw = self._switch(row, on, command)
         sw.pack(side="right", anchor="center")
+
+        # A short state word next to the switch: the glyph alone is too subtle
+        # to tell an on row from an off row at a glance.
+        state = ctk.CTkLabel(row, text="On" if on else "Off", width=26,
+                             font=theme.font(11, "bold"),
+                             text_color=theme.t("accent") if on else theme.t("text_subtle"))
+        state.pack(side="right", padx=(0, 10))
+        sw.state_label = state
+        previous_toggle = sw.toggle
+
+        def toggle_and_label():
+            previous_toggle()
+            on_now = bool(sw.get())
+            state.configure(text="On" if on_now else "Off",
+                            text_color=theme.t("accent") if on_now
+                            else theme.t("text_subtle"))
+        sw.toggle = toggle_and_label
         return sw
 
     def _render_waveform(self):
@@ -1045,12 +1062,22 @@ class DashboardWindow(ctk.CTk):
     def _toggle_chime_prior(self):
         state = bool(self.sw_chime_prior.get())
         settings.update_settings({"sound_chime_prior": state})
-        self._reconcile_sound_state(play="start" if state else None)
+        # Always give an audible answer, including when turning it off, so the
+        # click is never a silent no-op.
+        if state:
+            self._reconcile_sound_state(play="start")
+        else:
+            self._reconcile_sound_state()
+            sound.play_stop()
 
     def _toggle_chime_after(self):
         state = bool(self.sw_chime_after.get())
         settings.update_settings({"sound_chime_after": state})
-        self._reconcile_sound_state(play="success" if state else None)
+        if state:
+            self._reconcile_sound_state(play="success")
+        else:
+            self._reconcile_sound_state()
+            sound.play_stop()
 
     def _reconcile_sound_state(self, play=None):
         prior = bool(self.sw_chime_prior.get())
