@@ -1,0 +1,405 @@
+{
+  "_comment": "Derived from the OpenSLR-104 Hindi-English code-switched corpus. Each case is the Latin-script technical vocabulary from a real code-switched utterance; the cleaner must keep it verbatim.",
+  "cases": [
+    {
+      "id": "corpus_000",
+      "raw": "nested ifelse",
+      "expected": "Nested ifelse.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_001",
+      "raw": "multilevel ifelse statement",
+      "expected": "Multilevel ifelse statement.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_002",
+      "raw": "tutorial operating system",
+      "expected": "Tutorial operating system.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_003",
+      "raw": "tutorials website",
+      "expected": "Tutorials website.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_004",
+      "raw": "gnu bash version",
+      "expected": "Gnu bash version.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_005",
+      "raw": "nested ifelse statement flow",
+      "expected": "Nested ifelse statement flow.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_006",
+      "raw": "condition true condition",
+      "expected": "Condition true condition.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_007",
+      "raw": "true statement",
+      "expected": "True statement.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_008",
+      "raw": "conditions true that statement",
+      "expected": "Conditions true that statement.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_009",
+      "raw": "false statement",
+      "expected": "False statement.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_010",
+      "raw": "condition false statement",
+      "expected": "Condition false statement.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_011",
+      "raw": "nestedifelse sh file code",
+      "expected": "Nestedifelse sh file code.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_012",
+      "raw": "variable name value anusha",
+      "expected": "Variable name value anusha.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_013",
+      "raw": "variable password value abc123",
+      "expected": "Variable password value abc123.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_014",
+      "raw": "read command input data line",
+      "expected": "Read command input data line.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_015",
+      "raw": "hyphen p flag prompt",
+      "expected": "Hyphen p flag prompt.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_016",
+      "raw": "hyphen p enter name string terminal",
+      "expected": "Hyphen p enter name string terminal.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_017",
+      "raw": "myname variable text input",
+      "expected": "Myname variable text input.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_018",
+      "raw": "if statement variables myname name",
+      "expected": "If statement variables myname name.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_019",
+      "raw": "input variable name value anusha",
+      "expected": "Input variable name value anusha.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_020",
+      "raw": "values if statement code",
+      "expected": "Values if statement code.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_021",
+      "raw": "read command variable mypassword password",
+      "expected": "Read command variable mypassword password.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_022",
+      "raw": "hyphen s flag silent mode",
+      "expected": "Hyphen s flag silent mode.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_023",
+      "raw": "text terminal",
+      "expected": "Text terminal.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_024",
+      "raw": "ifelse statements set",
+      "expected": "Ifelse statements set.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_025",
+      "raw": "ifelse statements set if nested",
+      "expected": "Ifelse statements set if nested.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_026",
+      "raw": "if statement variables mypassword password",
+      "expected": "If statement variables mypassword password.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_027",
+      "raw": "if condition true echo terminal message welcome",
+      "expected": "If condition true echo terminal message welcome.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_028",
+      "raw": "e backslash escape",
+      "expected": "E backslash escape.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_029",
+      "raw": "n line string welcome printed",
+      "expected": "N line string welcome printed.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_030",
+      "raw": "if condition true else condition",
+      "expected": "If condition true else condition.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_031",
+      "raw": "passwords else condition",
+      "expected": "Passwords else condition.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_032",
+      "raw": "echo wrong password",
+      "expected": "Echo wrong password.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_033",
+      "raw": "fi ifelse statement",
+      "expected": "Fi ifelse statement.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_034",
+      "raw": "ifelse statement",
+      "expected": "Ifelse statement.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_035",
+      "raw": "myname name values else statement",
+      "expected": "Myname name values else statement.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_036",
+      "raw": "terminal message wrong name echo",
+      "expected": "Terminal message wrong name echo.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_037",
+      "raw": "keyboard ctrl alt t terminal window",
+      "expected": "Keyboard ctrl alt t terminal window.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_038",
+      "raw": "type chmod space plus x space nestedifelse sh",
+      "expected": "Type chmod space plus x space nestedifelse sh.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    },
+    {
+      "id": "corpus_039",
+      "raw": "type dot slash nestedifelse sh",
+      "expected": "Type dot slash nestedifelse sh.",
+      "tags": [
+        "corpus",
+        "english-terms"
+      ],
+      "origin": "OpenSLR-104 / ujs-hinglish"
+    }
+  ]
+}
