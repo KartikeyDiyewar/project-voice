@@ -36,6 +36,14 @@ def _ease(t: float) -> float:
     return 4 * t * t * t if t < 0.5 else 1 - pow(-2 * t + 2, 3) / 2
 
 
+def _blend(c1: str, c2: str, t: float) -> str:
+    """Cross-fade between two hex colours (canvas has no alpha)."""
+    t = max(0.0, min(1.0, t))
+    a = [int(c1.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4)]
+    b = [int(c2.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4)]
+    return "#%02X%02X%02X" % tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
+
 def _perimeter(w: float, h: float, inset: float):
     """Returns (points, cumulative_fractions) for the stadium outline."""
     r = max(1.0, h / 2 - inset)
@@ -99,10 +107,15 @@ def _slice(pts, fracs, start, end):
 
 
 class DayNightToggle(tk.Canvas):
-    """Checked (True) means dark mode: lit right half, crescent moon."""
+    """Stroke-based stadium switch.
+
+    Two personalities share the same track and arc maths:
+      kind="theme" - crescent moon / sun morph for dark mode
+      kind="onoff" - ring that collapses into a bar for off / on
+    """
 
     def __init__(self, master, value=False, command=None, bg=None,
-                 width=None, height=None, on_done=None):
+                 width=None, height=None, on_done=None, kind="theme"):
         scale = 1.0
         for attr in ("_get_widget_scaling", "_get_window_scaling"):
             fn = getattr(master, attr, None)
@@ -122,6 +135,7 @@ class DayNightToggle(tk.Canvas):
 
         self.command = command
         self.on_done = on_done
+        self.kind = kind if kind in ("theme", "onoff") else "theme"
         self.value = bool(value)
         self._bg = bg
         self._progress = 1.0 if self.value else 0.0
@@ -224,6 +238,32 @@ class DayNightToggle(tk.Canvas):
         self.create_line(*flat, fill=colour, width=width,
                          capstyle=tk.ROUND, joinstyle=tk.ROUND)
 
+    def _draw_onoff_glyph(self, cx, cy, r_core, colour, p):
+        """Ring (off) collapses to a dot while a vertical bar (on) grows.
+
+        p=0 -> ring at full size, p=1 -> bar at full height. Both cross-fade in
+        the middle, which reads as one glyph turning into the other.
+        """
+        s = self.scale
+        line = 2.6 * s
+
+        # ring shrinks and fades out
+        ring_scale = 1.0 - 0.70 * p
+        ring_alpha = 1.0 - min(1.0, p / 0.65)
+        if ring_alpha > 0.02:
+            rr = r_core * 0.86 * ring_scale
+            shade = _blend(self._bg, colour, ring_alpha)
+            self.create_oval(cx - rr, cy - rr, cx + rr, cy + rr,
+                             outline=shade, width=line)
+
+        # bar grows in height and fades in
+        bar = min(1.0, max(0.0, (p - 0.35) / 0.65))
+        if bar > 0.02:
+            half = r_core * 0.95 * bar
+            shade = _blend(self._bg, colour, bar)
+            self.create_line(cx, cy - half, cx, cy + half, fill=shade,
+                             width=3.2 * s, capstyle=tk.ROUND)
+
     def _render(self):
         try:
             self.delete("all")
@@ -255,6 +295,11 @@ class DayNightToggle(tk.Canvas):
         r_core = (h / 2 - inset) * CORE_RATIO
         if self._hover:
             r_core *= 1.05
+
+        if self.kind == "onoff":
+            self._draw_onoff_glyph(cx, cy, r_core, core_col, p)
+            return
+
         self.create_oval(cx - r_core, cy - r_core, cx + r_core, cy + r_core,
                          fill=core_col, outline="")
 

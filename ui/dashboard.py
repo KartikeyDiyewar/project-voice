@@ -410,11 +410,10 @@ class DashboardWindow(ctk.CTk):
         ctk.CTkFrame(parent, height=1, fg_color=theme.t("border")).pack(fill="x", pady=pady)
 
     def _switch(self, parent, on: bool, command, bg=None):
-        sw = ToggleSwitch(parent, value=on, command=command,
-                          bg=bg or theme.t("canvas"))
-        if on:
-            sw.select()
-        return sw
+        """The stroke-based on/off switch used for feature rows."""
+        return DayNightToggle(parent, value=on, command=command,
+                              bg=bg or theme.t("canvas"), width=64, height=32,
+                              kind="onoff")
 
     def _daynight_switch(self, parent, on: bool, command, bg=None):
         """The stroke-based day/night control used for the theme switch."""
