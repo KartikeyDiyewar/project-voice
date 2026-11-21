@@ -155,7 +155,6 @@ class DashboardWindow(ctk.CTk):
             ("Click", "click"),
             ("Soft", "synth"),
             ("Bell", "chime"),
-            ("None", "none"),
         ]
         self.anim_options = [
             ("Off", "off"),
@@ -538,7 +537,9 @@ class DashboardWindow(ctk.CTk):
 
         ctk.CTkLabel(left_col, text="Chime", font=theme.font(13),
                      text_color=theme.t("text")).pack(anchor="w", pady=(0, 7))
-        current_chime = "none" if not settings.sound_feedback else settings.sound_theme
+        current_chime = settings.sound_theme
+        if current_chime not in {v for _, v in self.chime_options}:
+            current_chime = "pop"
         self.chime_group = self._pill_group(
             left_col, self.chime_options, current_chime, self._on_chime_selected, side="top")
 
@@ -556,12 +557,12 @@ class DashboardWindow(ctk.CTk):
             self._is_startup_enabled(), self._toggle_startup)
         self.sw_chime_prior = self._setting_row(
             right_col, "Chime on press", "Short confirmation when recording starts",
-            bool(settings.sound_feedback and settings.sound_chime_prior),
-            self._toggle_chime_prior)
+            settings.sound_chime_prior, self._toggle_chime_prior)
         self.sw_chime_after = self._setting_row(
             right_col, "Chime on paste", "Confirmation once text lands in your app",
-            bool(settings.sound_feedback and settings.sound_chime_after),
-            self._toggle_chime_after, divider=False)
+            settings.sound_chime_after, self._toggle_chime_after, divider=False)
+
+        self._refresh_chime_availability()
 
         actions = ctk.CTkFrame(page, fg_color="transparent")
         actions.pack(fill="x", pady=(30, 0))
@@ -627,23 +628,6 @@ class DashboardWindow(ctk.CTk):
 
         sw = self._switch(row, on, command)
         sw.pack(side="right", anchor="center")
-
-        # A short state word next to the switch: the glyph alone is too subtle
-        # to tell an on row from an off row at a glance.
-        state = ctk.CTkLabel(row, text="On" if on else "Off", width=26,
-                             font=theme.font(11, "bold"),
-                             text_color=theme.t("accent") if on else theme.t("text_subtle"))
-        state.pack(side="right", padx=(0, 10))
-        sw.state_label = state
-        previous_toggle = sw.toggle
-
-        def toggle_and_label():
-            previous_toggle()
-            on_now = bool(sw.get())
-            state.configure(text="On" if on_now else "Off",
-                            text_color=theme.t("accent") if on_now
-                            else theme.t("text_subtle"))
-        sw.toggle = toggle_and_label
         return sw
 
     def _render_waveform(self):
@@ -1042,18 +1026,11 @@ class DashboardWindow(ctk.CTk):
     # HANDLERS
     # -------------------------------------------------------------------------
     def _on_chime_selected(self, value):
-        if value == "none":
-            settings.update_settings({"sound_feedback": False,
-                                      "sound_chime_prior": False, "sound_chime_after": False})
-            self.sw_chime_prior.deselect()
-            self.sw_chime_after.deselect()
-        else:
-            settings.update_settings({"sound_feedback": True, "sound_theme": value,
-                                      "sound_chime_prior": True, "sound_chime_after": True})
-            self.sw_chime_prior.select()
-            self.sw_chime_after.select()
-            sound.preview(value, "start")
+        """Picking a sound sets the theme and previews it in one go."""
+        settings.update_settings({"sound_theme": value})
         self._set_pill_group(self.chime_group, value)
+        sound.preview(value, "start")
+        self._refresh_chime_availability()
 
     def _on_anim_selected(self, value):
         settings.update_settings({"indicator_animation": value})
@@ -1062,40 +1039,44 @@ class DashboardWindow(ctk.CTk):
     def _toggle_chime_prior(self):
         state = bool(self.sw_chime_prior.get())
         settings.update_settings({"sound_chime_prior": state})
-        # Always give an audible answer, including when turning it off, so the
-        # click is never a silent no-op.
+        self._refresh_chime_availability()
         if state:
-            self._reconcile_sound_state(play="start")
+            sound.preview(settings.sound_theme, "start")
         else:
-            self._reconcile_sound_state()
             sound.play_stop()
 
     def _toggle_chime_after(self):
         state = bool(self.sw_chime_after.get())
         settings.update_settings({"sound_chime_after": state})
+        self._refresh_chime_availability()
         if state:
-            self._reconcile_sound_state(play="success")
+            sound.preview(settings.sound_theme, "success")
         else:
-            self._reconcile_sound_state()
             sound.play_stop()
 
-    def _reconcile_sound_state(self, play=None):
-        prior = bool(self.sw_chime_prior.get())
-        after = bool(self.sw_chime_after.get())
-        active = prior or after
-        settings.update_settings({"sound_feedback": active})
+    def _any_chime_enabled(self) -> bool:
+        return bool(settings.sound_chime_prior or settings.sound_chime_after)
 
-        if not active:
-            self._set_pill_group(self.chime_group, "none")
-            return
+    def _refresh_chime_availability(self):
+        """Reconciles sound_feedback and dims the theme picker when muted."""
+        active = self._any_chime_enabled()
+        if settings.sound_feedback != active:
+            settings.update_settings({"sound_feedback": active})
 
         theme_name = settings.sound_theme
-        if theme_name == "none":
+        if theme_name not in {v for _, v in self.chime_options}:
             theme_name = "pop"
             settings.update_settings({"sound_theme": theme_name})
         self._set_pill_group(self.chime_group, theme_name)
-        if play:
-            sound.preview(theme_name, play)
+        self._paint_chime_availability(active)
+
+    def _paint_chime_availability(self, active: bool):
+        """Greys the sound picker out while both chimes are off."""
+        for btn in self.chime_group["buttons"].values():
+            try:
+                btn.configure(state="normal" if active else "disabled")
+            except Exception:
+                pass
 
     def _toggle_appearance(self):
         """Plays the switch first, then repaints the surface in the new theme.
