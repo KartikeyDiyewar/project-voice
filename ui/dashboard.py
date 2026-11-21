@@ -157,7 +157,6 @@ class DashboardWindow(ctk.CTk):
             ("Bell", "chime"),
         ]
         self.anim_options = [
-            ("Off", "off"),
             ("Bars", "wave_bars"),
             ("Dots", "wave_dots"),
             ("Line", "sine_wave"),
@@ -622,12 +621,14 @@ class DashboardWindow(ctk.CTk):
 
         anim_card = self._detail_card(
             right_col, "Indicator motion", "How the floating pill reacts while listening",
-            settings.indicator_animation != "off", self._toggle_indicator,
-            top=14, toggle_label=False)
+            settings.indicator_animation != "off", self._toggle_indicator, top=14)
         self.sw_indicator = anim_card["switch"]
+        current_anim = settings.indicator_animation
+        if current_anim not in {v for _, v in self.anim_options}:
+            current_anim = "wave_bars"
         self.anim_group = self._pill_group(
             anim_card["detail"], self.anim_options,
-            settings.indicator_animation, self._on_anim_selected, side="top")
+            current_anim, self._on_anim_selected, side="top")
         self._sync_card_state(self.sw_indicator)
 
         self._refresh_cue_visibility()
