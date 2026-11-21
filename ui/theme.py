@@ -146,3 +146,10 @@ def font(size: int, weight: str = "normal", family: str | None = None) -> ctk.CT
 def mono(size: int, weight: str = "normal") -> ctk.CTkFont:
     _resolve_fonts()
     return ctk.CTkFont(family=MONO_FONT, size=size, weight=weight)
+
+
+def toggle_style() -> str:
+    """Which animated switch personality the user picked."""
+    style = settings.data.get("toggle_style", "tide").lower()
+    from ui.toggles import STYLES
+    return style if style in STYLES else "tide"

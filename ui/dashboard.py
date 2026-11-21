@@ -32,6 +32,7 @@ from config.settings import settings
 from utils.sound_feedback import sound
 from ui.icons import get_icon
 from ui import theme
+from ui.toggles import AnimatedToggle, STYLES as TOGGLE_STYLES
 
 ctk.set_default_color_theme("blue")
 ctk.set_appearance_mode(theme.mode())
@@ -57,66 +58,8 @@ def _hex_to_colorref(hex_color: str) -> int:
     return (b << 16) | (g << 8) | r
 
 
-class ToggleSwitch(tk.Canvas):
-    """A switch with an inset knob, so the track and both states stay legible.
-
-    CTkSwitch draws a knob as tall as the track, which collapses into a white
-    blob at small sizes. This draws an explicit track plus a knob inset by 3px.
-    """
-
-    TRACK_W, TRACK_H, INSET = 46, 26, 3
-
-    def __init__(self, master, value=False, command=None, bg=None,
-                 track_off=None, track_on=None, knob=None, disabled_track=None):
-        bg = bg or theme.t("canvas")
-        super().__init__(master, width=self.TRACK_W, height=self.TRACK_H,
-                         bg=bg, highlightthickness=0, bd=0, cursor="hand2")
-        self.command = command
-        self.value = bool(value)
-        self.colors = {
-            "off": track_off or theme.t("switch_off"),
-            "on": track_on or theme.t("accent"),
-            "knob": knob or theme.t("switch_knob"),
-        }
-        self.bind("<Button-1>", lambda _e: self.toggle())
-        self.bind("<Enter>", lambda _e: self._draw(hover=True))
-        self.bind("<Leave>", lambda _e: self._draw(hover=False))
-        self._draw()
-
-    def _draw(self, hover=False):
-        self.delete("all")
-        on = self.value
-        track = self.colors["on"] if on else self.colors["off"]
-        r = self.TRACK_H / 2
-        self.create_oval(0, 0, self.TRACK_H, self.TRACK_H, fill=track, outline="")
-        self.create_oval(self.TRACK_W - self.TRACK_H, 0, self.TRACK_W, self.TRACK_H,
-                         fill=track, outline="")
-        self.create_rectangle(r, 0, self.TRACK_W - r, self.TRACK_H, fill=track, outline="")
-
-        knob_d = self.TRACK_H - self.INSET * 2
-        y0, y1 = self.INSET, self.INSET + knob_d
-        x0 = self.TRACK_W - self.INSET - knob_d if on else self.INSET
-        self.create_oval(x0, y0, x0 + knob_d, y1,
-                         fill=self.colors["knob"], outline="")
-
-    def toggle(self):
-        self.value = not self.value
-        self._draw()
-        if self.command:
-            self.command()
-
-    def get(self) -> int:
-        return 1 if self.value else 0
-
-    def select(self):
-        if not self.value:
-            self.value = True
-            self._draw()
-
-    def deselect(self):
-        if self.value:
-            self.value = False
-            self._draw()
+class ToggleSwitch(AnimatedToggle):
+    """Backwards-compatible alias for the animated switch."""
 
 
 class DashboardWindow(ctk.CTk):
@@ -407,11 +350,30 @@ class DashboardWindow(ctk.CTk):
         ctk.CTkFrame(parent, height=1, fg_color=theme.t("border")).pack(fill="x", pady=pady)
 
     def _switch(self, parent, on: bool, command, bg=None):
-        sw = ToggleSwitch(parent, value=on, command=command,
-                          bg=bg or theme.t("canvas"))
+        sw = AnimatedToggle(parent, value=on, command=command,
+                            bg=bg or theme.t("canvas"), style=theme.toggle_style())
         if on:
             sw.select()
         return sw
+
+    def _toggle_widgets(self):
+        """Every live switch on the surface, for a style change in place."""
+        found = []
+        for root in (self.sidebar, self.content):
+            if root is not None:
+                try:
+                    found.extend(self._walk_for_toggles(root))
+                except Exception:
+                    pass
+        return found
+
+    def _walk_for_toggles(self, widget):
+        out = []
+        for child in widget.winfo_children():
+            if isinstance(child, AnimatedToggle):
+                out.append(child)
+            out.extend(self._walk_for_toggles(child))
+        return out
 
     def _pill_group(self, parent, options, active_value, on_change, side="left"):
         """Mutually exclusive pills; the selected one is the only filled chip."""
@@ -540,6 +502,12 @@ class DashboardWindow(ctk.CTk):
         self.anim_group = self._pill_group(
             left_col, self.anim_options, settings.indicator_animation,
             self._on_anim_selected, side="top")
+
+        ctk.CTkLabel(left_col, text="Switch style", font=theme.font(13),
+                     text_color=theme.t("text")).pack(anchor="w", pady=(18, 7))
+        self.toggle_group = self._pill_group(
+            left_col, [(s.capitalize(), s) for s in TOGGLE_STYLES],
+            theme.toggle_style(), self._on_toggle_style_selected, side="top")
 
         self._section_label(right_col, "Behavior", top=0)
         self._hairline(right_col, pady=(0, 0))
@@ -1034,6 +1002,13 @@ class DashboardWindow(ctk.CTk):
     def _on_anim_selected(self, value):
         settings.update_settings({"indicator_animation": value})
         self._set_pill_group(self.anim_group, value)
+
+    def _on_toggle_style_selected(self, value):
+        """Swap the switch personality everywhere, in place - no rebuild."""
+        settings.update_settings({"toggle_style": value})
+        self._set_pill_group(self.toggle_group, value)
+        for widget in self._toggle_widgets():
+            widget.set_style(value)
 
     def _toggle_chime_prior(self):
         state = bool(self.sw_chime_prior.get())

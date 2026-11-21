@@ -121,6 +121,11 @@ class Settings:
         """False until the user picks a theme on first launch."""
         return "appearance" in self.data
 
+    @property
+    def toggle_style(self) -> str:
+        """Animated switch personality: boulder, tide, matrix or blob."""
+        return self.data.get("toggle_style", "tide").lower()
+
     def update_api_key(self, api_key: str) -> bool:
         """Saves GROQ_API_KEY to runtime environment and .env file atomically."""
         self.groq_api_key = api_key.strip()
