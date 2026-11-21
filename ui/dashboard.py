@@ -32,7 +32,9 @@ from config.settings import settings
 from utils.sound_feedback import sound
 from ui.icons import get_icon
 from ui import theme
-from ui.daynight_toggle import DayNightToggle
+from ui.daynight_toggle import DayNightToggle, DURATION as DN_DURATION
+
+DURATION_MS = DN_DURATION * 1000
 
 ctk.set_default_color_theme("blue")
 ctk.set_appearance_mode(theme.mode())
@@ -417,7 +419,7 @@ class DashboardWindow(ctk.CTk):
     def _daynight_switch(self, parent, on: bool, command, bg=None):
         """The stroke-based day/night control used for the theme switch."""
         return DayNightToggle(parent, value=on, command=command,
-                              bg=bg or theme.t("canvas"), width=64, height=32)
+                              bg=bg or theme.t("canvas"), width=72, height=36)
 
     def _pill_group(self, parent, options, active_value, on_change, side="left"):
         """Mutually exclusive pills; the selected one is the only filled chip."""
@@ -1070,11 +1072,35 @@ class DashboardWindow(ctk.CTk):
             sound.preview(theme_name, play)
 
     def _toggle_appearance(self):
-        """Switches themes and remembers the choice for the next launch."""
+        """Plays the switch first, then repaints the surface in the new theme.
+
+        Repainting immediately destroyed the switch mid-animation, so the flip
+        never became visible. The theme is applied from the switch's completion
+        callback instead, and the repaint is deferred one frame after that.
+        """
+        if getattr(self, "_theme_busy", False):
+            return
         new_mode = "light" if theme.mode() == "dark" else "dark"
-        theme.set_mode(new_mode)
-        ctk.set_appearance_mode(new_mode)
-        self._rebuild_ui()
+        applied = {"done": False}
+
+        def apply():
+            if applied["done"]:
+                return
+            applied["done"] = True
+            self._theme_busy = False
+            theme.set_mode(new_mode)
+            ctk.set_appearance_mode(new_mode)
+            self._rebuild_ui()
+
+        self._theme_busy = True
+        for widget in (getattr(self, "theme_switch", None),
+                       getattr(self, "settings_theme_switch", None)):
+            if widget is not None and widget.winfo_exists():
+                try:
+                    widget.on_done = apply
+                except Exception:
+                    pass
+        self.after(int(DURATION_MS) + 20, apply)
 
     def _rebuild_ui(self):
         """Repaints the shell in place so a theme switch is immediate.

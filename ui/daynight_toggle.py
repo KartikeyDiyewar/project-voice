@@ -102,7 +102,7 @@ class DayNightToggle(tk.Canvas):
     """Checked (True) means dark mode: lit right half, crescent moon."""
 
     def __init__(self, master, value=False, command=None, bg=None,
-                 width=None, height=None):
+                 width=None, height=None, on_done=None):
         scale = 1.0
         for attr in ("_get_widget_scaling", "_get_window_scaling"):
             fn = getattr(master, attr, None)
@@ -121,6 +121,7 @@ class DayNightToggle(tk.Canvas):
                          highlightthickness=0, bd=0, cursor="hand2")
 
         self.command = command
+        self.on_done = on_done
         self.value = bool(value)
         self._bg = bg
         self._progress = 1.0 if self.value else 0.0
@@ -128,6 +129,14 @@ class DayNightToggle(tk.Canvas):
         self._start = 0.0
         self._job = None
         self._hover = False
+
+        # Geometry never changes for a given size, so sample it once. Re-deriving
+        # 200+ points on every animation frame is what made the flip look jerky.
+        inset = TRACK_WIDTH * scale + 0.6 * scale
+        self._pts, self._fracs = _perimeter(self.w, self.h, inset)
+        self._track_flat = [c for pt in self._pts for c in pt]
+        self._stroke_w = TRACK_WIDTH * scale
+        self._inset = inset
 
         self.bind("<Button-1>", lambda _e: self.toggle())
         self.bind("<Enter>", lambda _e: self._set_hover(True))
@@ -188,6 +197,8 @@ class DayNightToggle(tk.Canvas):
             self._progress = target
             self._job = None
             self._render()
+            if self.on_done:
+                self.on_done()
 
     def _set_hover(self, hover):
         self._hover = hover
@@ -201,19 +212,17 @@ class DayNightToggle(tk.Canvas):
         return theme.t("border_strong"), theme.t("ink"), theme.t("ink")
 
     def _stroke(self, pts, colour, width):
-        """Draws the outline as short round-capped segments.
+        """Draws the outline as one polyline.
 
-        A single smoothed polyline bulges away from the true stadium, and raw
-        straight segments facet at small sizes. Overlapping round-capped runs
-        between consecutive samples give a true curve at any scale.
+        A single create_line with round joins is both correct (it follows the
+        sampled path exactly) and cheap - one canvas item instead of hundreds,
+        which is what keeps the animation at 60fps.
         """
         if len(pts) < 2:
             return
-        for i in range(1, len(pts)):
-            x0, y0 = pts[i - 1]
-            x1, y1 = pts[i]
-            self.create_line(x0, y0, x1, y1, fill=colour, width=width,
-                             capstyle=tk.ROUND, joinstyle=tk.ROUND)
+        flat = [c for pt in pts for c in pt]
+        self.create_line(*flat, fill=colour, width=width,
+                         capstyle=tk.ROUND, joinstyle=tk.ROUND)
 
     def _render(self):
         try:
@@ -224,14 +233,15 @@ class DayNightToggle(tk.Canvas):
         s = self.scale
         p = max(0.0, min(1.0, self._progress))   # 1.0 = dark mode
         w, h = self.w, self.h
-        inset = TRACK_WIDTH * s + 0.6 * s
-        stroke = TRACK_WIDTH * s
+        inset = self._inset
+        stroke = self._stroke_w
 
-        pts, fracs = _perimeter(w, h, inset)
+        pts, fracs = self._pts, self._fracs
         track_col, lit_col, core_col = self._palette()
 
-        # base stadium outline
-        self._stroke(pts, track_col, stroke)
+        # base stadium outline (one cached canvas item)
+        self.create_line(*self._track_flat, fill=track_col, width=stroke,
+                         capstyle=tk.ROUND, joinstyle=tk.ROUND)
 
         # Lit half is the right side in day and the left side at night, so the
         # arc orbits a full half-turn as the switch moves.
