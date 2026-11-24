@@ -65,6 +65,16 @@ Project Voice/
 
 ## 🚀 Quickstart
 
+### Download (no Python needed)
+Grab the latest `ProjectVoice-Windows.zip` from
+[Releases](https://github.com/KartikeyDiyewar/project-voice/releases/latest),
+extract it anywhere and run `ProjectVoice.exe`. No installer, no admin rights.
+
+> **Note:** Project Voice is a Windows desktop app. There is no Android build —
+> it needs the Windows global keyboard hook, clipboard and window focus APIs.
+
+### Run from source
+
 ### 1. Prerequisites
 - Windows 10 / 11 (64-bit)
 - Python 3.10+
@@ -95,6 +105,23 @@ To create a standalone `.exe` that runs without Python installed:
 .\build_exe.bat
 ```
 The output binary will be created in `dist/Project Voice/Project Voice.exe`.
+
+For a single self-contained file instead of a folder, see `.github/workflows/release.yml`
+or run:
+```bash
+pyinstaller --onefile --noconsole --name "ProjectVoice" --icon assets/icon.ico \
+  --add-data "assets/icon.ico;assets" --add-data "settings.json;." \
+  --add-data "dictionary.json;." --collect-all customtkinter \
+  --collect-all darkdetect --hidden-import pystray._win32 \
+  --hidden-import pynput.keyboard._win32 app.py
+```
+
+### 5. Releasing
+Push a tag and CI builds the zip and attaches it to the release:
+```bash
+git tag v1.3.0
+git push origin v1.3.0
+```
 
 ---
 

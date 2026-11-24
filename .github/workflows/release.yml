@@ -1,0 +1,82 @@
+name: Build Windows release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Run tests
+        run: python -m pytest -q --timeout=180
+
+      - name: Build single-file executable
+        run: |
+          pyinstaller --noconfirm --clean --onefile --noconsole `
+            --name "ProjectVoice" `
+            --icon "assets/icon.ico" `
+            --add-data "assets/icon.ico;assets" `
+            --add-data "settings.json;." `
+            --add-data "dictionary.json;." `
+            --collect-all customtkinter `
+            --collect-all darkdetect `
+            --hidden-import pystray._win32 `
+            --hidden-import pynput.keyboard._win32 `
+            app.py
+
+      - name: Assemble release folder
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Copy-Item "dist/ProjectVoice.exe" release/
+          Copy-Item ".env.example" release/
+          Copy-Item "settings.json" release/
+          Copy-Item "dictionary.json" release/
+          Copy-Item "README.md" release/
+
+      - name: Zip it
+        run: Compress-Archive -Path "release/*" -DestinationPath "ProjectVoice-Windows.zip" -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProjectVoice-Windows
+          path: ProjectVoice-Windows.zip
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ProjectVoice-Windows.zip
+          generate_release_notes: true
+          body: |
+            ## Project Voice for Windows
+
+            Download `ProjectVoice-Windows.zip`, extract it anywhere, and run
+            `ProjectVoice.exe`.
+
+            1. Open Settings and paste a free Groq API key from
+               https://console.groq.com/keys
+            2. Pick a theme on first launch.
+            3. Hold your shortcut (Ctrl + Space by default) and speak in
+               English, Hindi or Hinglish.
+
+            No installer, no admin rights, no telemetry. Audio is captured in
+            memory and never written to disk.
