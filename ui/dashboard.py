@@ -972,6 +972,8 @@ class DashboardWindow(ctk.CTk):
             except Exception:
                 pass
 
+        self._pause_hotkeys()
+
     def _resume_hotkeys(self):
         manager = getattr(self, "_hotkey_manager", None)
         if manager is not None:
@@ -979,6 +981,18 @@ class DashboardWindow(ctk.CTk):
                 manager.start()
             except Exception:
                 pass
+        self._show_hotkey_warning()
+
+    def _show_hotkey_warning(self):
+        """Surfaces the field's advice about a risky single-key binding."""
+        if getattr(self, "hk_status", None) is None or not self.hk_status.winfo_exists():
+            return
+        field = getattr(self, "hotkey_field", None)
+        if field is None:
+            return
+        text = field.warning()
+        if text:
+            self.hk_status.configure(text=text, text_color=theme.t("warning"))
 
     def _on_hotkey_captured(self, chord):
         """Called once, when the tick is pressed in the key field."""

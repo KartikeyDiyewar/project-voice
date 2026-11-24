@@ -24,6 +24,40 @@ VK_SHIFT = 0x10
 VK_MENU = 0x12  # Alt
 VK_SPACE = 0x20
 VK_F8 = 0x77
+VK_LWIN = 0x5B
+VK_RWIN = 0x5C
+
+# pynput calls a few keys by a different name than the chord string uses.
+KEY_ALIASES = {
+    "esc": "escape",
+    "return": "enter",
+    "control": "ctrl",
+    "del": "delete",
+    "prior": "page_up",
+    "next": "page_down",
+}
+
+
+def normalize_key(name: str) -> str:
+    name = (name or "").strip().lower()
+    return KEY_ALIASES.get(name, name)
+
+
+def key_matches_token(key, token: str) -> bool:
+    """True when a pressed pynput key is the key named by a chord token.
+
+    Works for named keys (f9, enter, page_up) and for printable characters, so
+    any single key the user registers can actually fire.
+    """
+    token = normalize_key(token)
+    name = getattr(key, "name", None)
+    if name and normalize_key(name) == token:
+        return True
+    char = getattr(key, "char", None)
+    if char and char.lower() == token:
+        return True
+    return False
+
 
 def is_physical_key_down(vk_code: int) -> bool:
     """Queries Windows hardware keyboard state directly."""
@@ -82,37 +116,59 @@ class HotkeyManager:
     def _matches_f8(self, key):
         return key == keyboard.Key.f8
 
+    def _modifier_down(self, token: str) -> bool:
+        """Modifiers are checked both in the hook state and at the hardware level.
+
+        The hardware check stops a plain Space from firing while Ctrl happens to
+        be held for another app.
+        """
+        key_map = {
+            "ctrl": ({keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r}, VK_CONTROL),
+            "shift": ({keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r}, VK_SHIFT),
+            "alt": ({keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r,
+                     keyboard.Key.alt_gr}, VK_MENU),
+            "win": ({keyboard.Key.cmd, keyboard.Key.cmd_l, keyboard.Key.cmd_r}, VK_LWIN),
+        }
+        keys, vk = key_map[token]
+        in_hook = any(k in keys for k in self.currently_pressed)
+        if not in_hook:
+            return False
+        return is_physical_key_down(vk)
+
     def _is_combination_down(self, hotkey_str: str) -> bool:
-        """Dynamically evaluates whether a configured hotkey combination is pressed."""
+        """Dynamically evaluates whether a configured hotkey combination is pressed.
+
+        Every token is handled generically, so a single key (f9, enter, page_up),
+        a letter, or any modifier combination all work the same way.
+        """
         if not hotkey_str:
             return False
 
-        tokens = [t.strip() for t in hotkey_str.lower().split("+")]
+        tokens = [normalize_key(t) for t in hotkey_str.split("+") if t.strip()]
+        if not tokens:
+            return False
+
         for token in tokens:
-            if token in ("ctrl", "control"):
-                if not (any(self._matches_ctrl(k) for k in self.currently_pressed) and is_physical_key_down(VK_CONTROL)):
-                    return False
-            elif token == "shift":
-                if not (any(self._matches_shift(k) for k in self.currently_pressed) and is_physical_key_down(VK_SHIFT)):
-                    return False
-            elif token in ("alt", "alt_r", "alt_l", "alt_gr"):
-                if not (any(self._matches_alt(k) for k in self.currently_pressed) and is_physical_key_down(VK_MENU)):
-                    return False
-            elif token == "space":
-                if not any(self._matches_space(k) for k in self.currently_pressed):
-                    return False
-            elif token == "f8":
-                if not any(self._matches_f8(k) for k in self.currently_pressed):
+            if token in ("ctrl", "shift", "alt", "win"):
+                if not self._modifier_down(token):
                     return False
             else:
-                matched = False
-                for k in self.currently_pressed:
-                    if hasattr(k, "char") and k.char and k.char.lower() == token:
-                        matched = True
-                        break
-                if not matched:
+                if not any(key_matches_token(k, token) for k in self.currently_pressed):
                     return False
         return True
+
+    def _chord_completed_by(self, chord: str, key) -> bool:
+        """Was this press the one that completed the chord?
+
+        Without this, any unrelated key pressed while the chord's keys are held
+        (e.g. typing 'r' during Ctrl+Space) would be treated as a fresh trigger.
+        The key that arrives must be one of the chord's non-modifier tokens.
+        """
+        tokens = [normalize_key(t) for t in (chord or "").split("+") if t.strip()]
+        base = [t for t in tokens if t not in ("ctrl", "shift", "alt", "win")]
+        if not base:
+            return False
+        return any(key_matches_token(key, t) for t in base)
 
     def _on_press(self, key):
         with self.lock:
@@ -124,8 +180,10 @@ class HotkeyManager:
             if already_down:
                 return
 
-            is_primary = self._is_combination_down(self.primary_hotkey_str)
-            is_fallback = self._is_combination_down(self.fallback_hotkey_str)
+            is_primary = (self._chord_completed_by(self.primary_hotkey_str, key)
+                          and self._is_combination_down(self.primary_hotkey_str))
+            is_fallback = (self._chord_completed_by(self.fallback_hotkey_str, key)
+                           and self._is_combination_down(self.fallback_hotkey_str))
             if not (is_primary or is_fallback):
                 return
 

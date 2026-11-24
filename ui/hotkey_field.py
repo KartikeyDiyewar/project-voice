@@ -44,7 +44,8 @@ SPECIAL = {
     "print_screen": "print_screen", "pause": "pause", "menu": "menu",
 }
 
-# Single keys that can never be a dictation trigger on their own.
+# Single keys that make poor dictation triggers on their own because they also
+# confirm dialogs or move focus. They are still allowed with a modifier.
 UNSAFE_ALONE = {"escape", "enter", "tab", "backspace", "delete", "insert"}
 
 
@@ -289,16 +290,20 @@ class HotkeyField(tk.Frame):
         self._render()
 
     def _confirm_state(self) -> str:
-        """A binding needs at least one key; risky single keys need a modifier."""
+        """Any key or chord can be bound; only a bare modifier is incomplete."""
         if not self._tokens:
             return "disabled"
-        has_mod = any(t in MODIFIER_ORDER for t in self._tokens)
         bases = [t for t in self._tokens if t not in MODIFIER_ORDER]
-        if not bases:
-            return "disabled"   # modifier-only is not a complete chord
-        if not has_mod and bases[0] in UNSAFE_ALONE:
-            return "disabled"
-        return "normal"
+        return "normal" if bases else "disabled"
+
+    def warning(self) -> str:
+        """Explains a risky choice without blocking it."""
+        bases = [t for t in self._tokens if t not in MODIFIER_ORDER]
+        has_mod = any(t in MODIFIER_ORDER for t in self._tokens)
+        if bases and not has_mod and bases[0] in UNSAFE_ALONE:
+            return (f"{_pretty_token(bases[0])} alone also confirms dialogs "
+                    f"in other apps. Add Ctrl or Shift to be safe.")
+        return ""
 
     def confirm(self):
         if not self._capturing or self._confirm_state() == "disabled":

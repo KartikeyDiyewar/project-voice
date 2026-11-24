@@ -79,13 +79,25 @@ def test_modifier_alone_cannot_be_confirmed(field):
     assert saves == []
 
 
-def test_risky_single_key_needs_a_modifier(field):
+def test_risky_single_key_is_allowed_but_warns(field):
+    """The user decides; we explain the risk instead of blocking it."""
     f, saves, _ = field
     f.start_capture()
     _press(f, kb.Key.enter)
-    assert f._confirm_state() == "disabled"
+    assert f._confirm_state() == "normal", "single Enter should be bindable"
+    assert "Enter" in f.warning()
+    f.confirm()
+    assert saves == ["enter"]
+
+
+def test_modified_risky_key_does_not_warn(field):
+    f, saves, _ = field
+    f.start_capture()
     _press(f, kb.Key.ctrl_l)
-    assert f._confirm_state() == "normal"
+    _press(f, kb.Key.enter)
+    assert f.warning() == ""
+    f.confirm()
+    assert saves == ["ctrl+enter"]
 
 
 def test_escape_cancels_without_saving(field):
